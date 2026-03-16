@@ -28,4 +28,10 @@ dist/
 apm-installer-*.tar.gz
 install_package/
 agent-extension/target/
+agent-extension/dist/
 .collect_tmp/
+
+# 문서/폰트 바이너리
+*.pdf
+*.ttf
+*.otf
