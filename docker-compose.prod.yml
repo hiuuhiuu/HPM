@@ -1,0 +1,66 @@
+version: '3.8'
+
+# ──────────────────────────────────────────────────────
+#  APM 프로덕션 구성
+#  브라우저 접속: http://<APM_SERVER_IP>:8080
+#  OTLP 수신:    http://<APM_SERVER_IP>:8080/otlp  (WAS 서버 설정)
+# ──────────────────────────────────────────────────────
+
+services:
+  db:
+    image: timescale/timescaledb:latest-pg15
+    container_name: apm-db
+    restart: always
+    environment:
+      POSTGRES_USER:     ${DB_USER:-apm}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB:       apmdb
+    ports:
+      - "127.0.0.1:5432:5432"   # DB는 localhost에서만 접근 가능
+    volumes:
+      - ${DATA_DIR:-/data/apm}/db:/var/lib/postgresql/data
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-apm} -d apmdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  backend:
+    image: apm-backend:1.0
+    container_name: apm-backend
+    restart: always
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      SECRET_KEY:   ${SECRET_KEY}
+    expose:
+      - "8000"                   # 외부 직접 노출 없이 nginx 내부 통신만
+    depends_on:
+      db:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  frontend:
+    image: apm-frontend:1.0
+    container_name: apm-frontend
+    restart: always
+    ports:
+      - "0.0.0.0:8080:8080"     # 브라우저 접속 포트
+    depends_on:
+      - backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+volumes: {}

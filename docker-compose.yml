@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  db:
+    image: timescale/timescaledb:latest-pg15
+    container_name: apm-db
+    environment:
+      POSTGRES_USER: apm
+      POSTGRES_PASSWORD: apm1234
+      POSTGRES_DB: apmdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - apm-db-data:/var/lib/postgresql/data
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U apm -d apmdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: apm-backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://apm:apm1234@db:5432/apmdb
+      SECRET_KEY: apm-secret-key-change-in-production
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: apm-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+
+  jeus-sample:
+    build:
+      context: ./sample-jeus
+      dockerfile: Dockerfile
+    container_name: apm-jeus-sample
+    environment:
+      OTLP_ENDPOINT: http://backend:8000/otlp
+      SERVICE_NAME: jeus-sample
+      SERVICE_INSTANCE_ID: jeus8-node1
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  apm-db-data:
