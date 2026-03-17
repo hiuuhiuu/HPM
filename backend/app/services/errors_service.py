@@ -42,8 +42,8 @@ async def get_error_list(
     where = " AND ".join(filters)
 
     sql = f"""
-        SELECT id, time, service, instance, error_type, message,
-               stack_trace, trace_id, span_id, resolved, attributes
+        SELECT id, time, first_seen, service, instance, error_type, message,
+               stack_trace, trace_id, span_id, resolved, attributes, count
         FROM errors
         WHERE {where}
         ORDER BY time DESC
@@ -68,8 +68,8 @@ async def get_error_list(
 async def get_error_by_id(db: AsyncSession, error_id: int) -> Optional[Dict]:
     result = await db.execute(
         text("""
-            SELECT id, time, service, instance, error_type, message,
-                   stack_trace, trace_id, span_id, resolved, attributes
+            SELECT id, time, first_seen, service, instance, error_type, message,
+                   stack_trace, trace_id, span_id, resolved, attributes, count
             FROM errors WHERE id = :id
         """),
         {"id": error_id},
@@ -150,6 +150,7 @@ def _row_to_dict(row) -> Dict:
     return {
         "id":          row["id"],
         "time":        row["time"].isoformat(),
+        "first_seen":  row["first_seen"].isoformat() if row["first_seen"] else row["time"].isoformat(),
         "service":     row["service"],
         "instance":    row["instance"],
         "error_type":  row["error_type"],
@@ -159,4 +160,5 @@ def _row_to_dict(row) -> Dict:
         "span_id":     row["span_id"],
         "resolved":    row["resolved"],
         "attributes":  row["attributes"] or {},
+        "count":       row["count"] or 1,
     }

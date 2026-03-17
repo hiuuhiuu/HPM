@@ -64,6 +64,7 @@ interface RecentError {
   error_type: string;
   message: string;
   trace_id: string | null;
+  count: number;
 }
 interface ServiceActivity {
   service: string;
@@ -577,8 +578,25 @@ export default function Dashboard() {
                     <span style={{ fontSize: 12, color: '#fca5a5', fontWeight: 600 }}>
                       {err.error_type}
                     </span>
+                    {err.count > 1 && (
+                      <span style={{
+                        fontSize: 10, color: '#fff', background: '#ef4444',
+                        borderRadius: 10, padding: '1px 6px', fontWeight: 700,
+                      }}>
+                        {err.count}
+                      </span>
+                    )}
                     {!service && defaultLevel !== 'instance' && (
                       <span style={{ fontSize: 11, color: '#475569' }}>{err.service}</span>
+                    )}
+                    {err.trace_id && (
+                      <Link
+                        to={`/traces?trace_id=${err.trace_id}`}
+                        onClick={e => e.stopPropagation()}
+                        style={{ marginLeft: 'auto', fontSize: 10, color: '#6366f1', textDecoration: 'none', whiteSpace: 'nowrap' }}
+                      >
+                        트레이스 →
+                      </Link>
                     )}
                   </div>
                   <div style={{ fontSize: 12, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

@@ -456,10 +456,17 @@ async def process_traces(db: AsyncSession, body: bytes) -> int:
             text("""
                 INSERT INTO errors
                     (service, instance, error_type, message, stack_trace,
-                     trace_id, span_id, attributes)
+                     trace_id, span_id, attributes, first_seen)
                 VALUES
                     (:service, :instance, :error_type, :message, :stack_trace,
-                     :trace_id, :span_id, CAST(:attributes AS jsonb))
+                     :trace_id, :span_id, CAST(:attributes AS jsonb), NOW())
+                ON CONFLICT (service, error_type, message) DO UPDATE SET
+                    count    = errors.count + 1,
+                    time     = NOW(),
+                    trace_id = EXCLUDED.trace_id,
+                    span_id  = EXCLUDED.span_id,
+                    instance = EXCLUDED.instance,
+                    resolved = FALSE
             """),
             error_rows,
         )

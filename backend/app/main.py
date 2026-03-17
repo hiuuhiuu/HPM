@@ -9,7 +9,7 @@ from app.core.config import settings
 from app.core.alert_checker import alert_checker_loop
 from app.core.metrics_streamer import metrics_stream_loop
 from app.core.websocket import manager, metrics_manager
-from app.core.database import AsyncSessionLocal, ensure_indexes
+from app.core.database import AsyncSessionLocal, ensure_indexes, ensure_errors_migration
 from app.services import settings_service
 
 logging.basicConfig(
@@ -37,6 +37,8 @@ async def lifespan(app: FastAPI):
 
     # DB 인덱스 보장 (기존 설치 호환)
     await ensure_indexes()
+    # errors 테이블 마이그레이션 (count/first_seen/dedup/unique index)
+    await ensure_errors_migration()
 
     # 앱 시작: 백그라운드 태스크 실행
     checker_task  = asyncio.create_task(alert_checker_loop())

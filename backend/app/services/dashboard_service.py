@@ -142,7 +142,8 @@ async def get_recent_errors(
         params["service"] = service
 
     r = await db.execute(text(f"""
-        SELECT id, time, service, error_type, message, trace_id
+        SELECT id, time, service, error_type, message, trace_id,
+               COALESCE(count, 1) AS count
         FROM errors
         WHERE {cond}
         ORDER BY time DESC
@@ -158,6 +159,7 @@ async def get_recent_errors(
             "error_type": row["error_type"],
             "message":    row["message"],
             "trace_id":   row["trace_id"],
+            "count":      int(row["count"]),
         }
         for row in rows
     ]
