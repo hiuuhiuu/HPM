@@ -214,25 +214,63 @@ function TraceViewSettings() {
   const [minSpanMs, setMinSpanMs] = useState(() =>
     Number(localStorage.getItem('trace_min_span_ms') || '0')
   );
+  const [minTraceDurationMs, setMinTraceDurationMs] = useState(() =>
+    Number(localStorage.getItem('trace_min_duration_ms') || '0')
+  );
   const [saved, setSaved] = useState(false);
 
-  const handleChange = (val: number) => {
+  const markSaved = () => { setSaved(true); setTimeout(() => setSaved(false), 1500); };
+
+  const handleSpanChange = (val: number) => {
     const v = Math.max(0, val);
     setMinSpanMs(v);
     localStorage.setItem('trace_min_span_ms', String(v));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1500);
+    markSaved();
+  };
+
+  const handleDurationChange = (val: number) => {
+    const v = Math.max(0, val);
+    setMinTraceDurationMs(v);
+    localStorage.setItem('trace_min_duration_ms', String(v));
+    markSaved();
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: 80, background: '#161827', border: '1px solid #2d3148',
+    color: '#e2e8f0', borderRadius: 6, padding: '6px 10px', fontSize: 13,
+    outline: 'none',
   };
 
   return (
     <section className="settings-section">
-      <h2>트레이스 콜 트리 뷰 설정</h2>
+      <h2>트레이스 뷰 설정</h2>
       <p className="section-desc">
-        트레이싱 상세 페이지의 콜 트리/워터폴에서 매우 짧은 스팬을 숨겨 노이즈를 줄입니다.<br />
-        ERROR 스팬은 설정값에 관계없이 항상 표시됩니다.
+        트레이싱 페이지의 표시 노이즈를 줄이기 위한 최소 시간 필터입니다.<br />
+        ERROR 트레이스/스팬은 설정값에 관계없이 항상 표시됩니다.
       </p>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
-        <label style={{ fontSize: 13, color: '#94a3b8' }}>
+
+      {/* 트랜잭션 분포 최소 시간 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16 }}>
+        <label style={{ fontSize: 13, color: '#94a3b8', minWidth: 200 }}>
+          트랜잭션 분포 최소 표시 시간
+        </label>
+        <input
+          type="number"
+          min={0}
+          step={1}
+          value={minTraceDurationMs}
+          onChange={e => handleDurationChange(Number(e.target.value))}
+          style={inputStyle}
+        />
+        <span style={{ fontSize: 13, color: '#64748b' }}>ms &nbsp;(0 = 모두 표시)</span>
+      </div>
+      <p style={{ fontSize: 12, color: '#475569', marginTop: 6, marginLeft: 212 }}>
+        분산 트레이싱 목록·산점도·히스토그램에서 이 값 미만인 트레이스를 숨깁니다.
+      </p>
+
+      {/* 콜 트리 최소 스팬 시간 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16 }}>
+        <label style={{ fontSize: 13, color: '#94a3b8', minWidth: 200 }}>
           콜 트리 최소 스팬 표시 시간
         </label>
         <input
@@ -240,19 +278,16 @@ function TraceViewSettings() {
           min={0}
           step={1}
           value={minSpanMs}
-          onChange={e => handleChange(Number(e.target.value))}
-          style={{
-            width: 80, background: '#161827', border: '1px solid #2d3148',
-            color: '#e2e8f0', borderRadius: 6, padding: '6px 10px', fontSize: 13,
-            outline: 'none',
-          }}
+          onChange={e => handleSpanChange(Number(e.target.value))}
+          style={inputStyle}
         />
         <span style={{ fontSize: 13, color: '#64748b' }}>ms &nbsp;(0 = 모두 표시)</span>
-        {saved && <span style={{ fontSize: 12, color: '#4ade80' }}>저장됨 ✓</span>}
       </div>
-      <p style={{ fontSize: 12, color: '#475569', marginTop: 8 }}>
-        예: 5 입력 시 5ms 미만인 내부 메서드 스팬이 콜 트리에서 숨겨집니다. 트레이스 뷰를 열 때 이 값이 자동 적용됩니다.
+      <p style={{ fontSize: 12, color: '#475569', marginTop: 6, marginLeft: 212 }}>
+        콜 트리/워터폴 내 이 값 미만인 스팬을 숨깁니다.
       </p>
+
+      {saved && <span style={{ fontSize: 12, color: '#4ade80', display: 'block', marginTop: 12 }}>저장됨 ✓</span>}
     </section>
   );
 }

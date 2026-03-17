@@ -32,9 +32,7 @@ export default function Traces() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [hideSystemTraces, setHideSystemTraces] = useState(true);
   const [hideStaticResources, setHideStaticResources] = useState(false);
-  const [minTraceDurationMs, setMinTraceDurationMs] = useState(
-    () => Number(localStorage.getItem('trace_min_duration_ms') || '0')
-  );
+  const minTraceDurationMs = Number(localStorage.getItem('trace_min_duration_ms') || '0');
 
   // Errors 페이지에서 trace_id 파라미터로 이동 시 자동 선택
   useEffect(() => {
@@ -206,27 +204,14 @@ export default function Traces() {
               </span>
             )}
           </label>
-          {/* 트랜잭션 최소 표시 시간 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#94a3b8', userSelect: 'none' }}>
-            <input
-              type="number"
-              min={0}
-              step={1}
-              value={minTraceDurationMs}
-              onChange={e => {
-                const v = Math.max(0, Number(e.target.value));
-                setMinTraceDurationMs(v);
-                localStorage.setItem('trace_min_duration_ms', String(v));
-              }}
-              style={{
-                width: 56, background: '#1e2035', border: '1px solid #2d3148',
-                color: '#e2e8f0', borderRadius: 4, padding: '2px 6px', fontSize: 12,
-                outline: 'none',
-              }}
-              title="트랜잭션 분포에서 이 값 미만인 트레이스(에러 제외)를 숨깁니다. 0이면 모두 표시."
-            />
-            <span>ms 미만 제외</span>
-          </div>
+          {/* 트랜잭션 최소 표시 시간 — 설정값 표시 전용 */}
+          {minTraceDurationMs > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#475569', userSelect: 'none' }}>
+              <span style={{ background: '#1e2035', border: '1px solid #2d3148', borderRadius: 4, padding: '2px 8px' }}>
+                {minTraceDurationMs}ms 미만 제외
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
