@@ -23,9 +23,12 @@ function App() {
   useEffect(() => {
     const handler = (e: Event) => {
       const msg = (e as CustomEvent<string>).detail;
-      const id = Date.now();
-      setToasts(prev => [...prev, { id, message: msg }]);
-      setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
+      setToasts(prev => {
+        if (prev.some(t => t.message === msg)) return prev; // 동일 메시지 중복 표시 억제
+        const id = Date.now();
+        setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 4000);
+        return [...prev, { id, message: msg }];
+      });
     };
     window.addEventListener('api-error', handler);
     return () => window.removeEventListener('api-error', handler);

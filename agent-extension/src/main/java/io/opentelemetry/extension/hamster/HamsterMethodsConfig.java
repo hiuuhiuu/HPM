@@ -65,14 +65,25 @@ public final class HamsterMethodsConfig {
         public final List<String> exactEntries;
         /** ByteBuddy 계측에 사용할 와일드카드 규칙 목록. */
         public final List<WildcardRule> wildcardRules;
+        /** key=value 설정 항목 (예: min_span_duration_ms=5). */
+        public final java.util.Map<String, String> settings;
 
-        ParsedConfig(List<String> exactEntries, List<WildcardRule> wildcardRules) {
+        ParsedConfig(List<String> exactEntries, List<WildcardRule> wildcardRules,
+                     java.util.Map<String, String> settings) {
             this.exactEntries   = Collections.unmodifiableList(exactEntries);
             this.wildcardRules  = Collections.unmodifiableList(wildcardRules);
+            this.settings       = Collections.unmodifiableMap(settings);
         }
 
         public boolean isEmpty() {
             return exactEntries.isEmpty() && wildcardRules.isEmpty();
+        }
+
+        /** 설정값을 long으로 반환. 없거나 파싱 실패 시 defaultValue 반환. */
+        public long getLong(String key, long defaultValue) {
+            String val = settings.get(key);
+            if (val == null) return defaultValue;
+            try { return Long.parseLong(val.trim()); } catch (NumberFormatException e) { return defaultValue; }
         }
     }
 
@@ -131,7 +142,8 @@ public final class HamsterMethodsConfig {
         String none = "[Hamster] No method config file found. Hooking disabled.";
         System.err.println(none);
         logger.warning(none);
-        return new ParsedConfig(Collections.<String>emptyList(), Collections.<WildcardRule>emptyList());
+        return new ParsedConfig(Collections.<String>emptyList(), Collections.<WildcardRule>emptyList(),
+                Collections.<String, String>emptyMap());
     }
 
     // ── 파싱 ───────────────────────────────────────────────────────────────────
@@ -139,12 +151,22 @@ public final class HamsterMethodsConfig {
     private static ParsedConfig parse(File file) {
         List<String> exactEntries  = new ArrayList<>();
         List<WildcardRule> wildcardRules = new ArrayList<>();
+        java.util.Map<String, String> settings = new java.util.LinkedHashMap<>();
 
         try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 line = line.trim();
                 if (line.isEmpty() || line.startsWith("#")) continue;
+
+                // ── key=value 설정 (메서드 패턴보다 먼저 검사) ──────────────────
+                if (line.contains("=") && !line.contains("[")) {
+                    int eq = line.indexOf('=');
+                    String key = line.substring(0, eq).trim();
+                    String val = line.substring(eq + 1).trim();
+                    settings.put(key, val);
+                    continue;
+                }
 
                 // ── 패키지 와일드카드: com.bank.service.* 또는 com.bank.** ──────
                 if (line.endsWith(".**")) {
@@ -183,6 +205,6 @@ public final class HamsterMethodsConfig {
             return null;
         }
 
-        return new ParsedConfig(exactEntries, wildcardRules);
+        return new ParsedConfig(exactEntries, wildcardRules, settings);
     }
 }

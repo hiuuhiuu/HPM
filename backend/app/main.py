@@ -4,12 +4,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import health, otlp, metrics, traces, errors, logs, dashboard, alerts, stats, thread_dumps, insights, ws, services
+from app.api import health, otlp, metrics, traces, errors, logs, dashboard, alerts, stats, thread_dumps, insights, ws, services, agents
 from app.core.config import settings
 from app.core.alert_checker import alert_checker_loop
 from app.core.metrics_streamer import metrics_stream_loop
 from app.core.websocket import manager, metrics_manager
-from app.core.database import AsyncSessionLocal, ensure_indexes, ensure_errors_migration
+from app.core.database import AsyncSessionLocal, ensure_indexes, ensure_errors_migration, ensure_agent_configs_table
 from app.services import settings_service
 
 logging.basicConfig(
@@ -39,6 +39,8 @@ async def lifespan(app: FastAPI):
     await ensure_indexes()
     # errors 테이블 마이그레이션 (count/first_seen/dedup/unique index)
     await ensure_errors_migration()
+    # agent_configs 테이블 생성 (에이전트별 설정 저장)
+    await ensure_agent_configs_table()
 
     # 앱 시작: 백그라운드 태스크 실행
     checker_task  = asyncio.create_task(alert_checker_loop())
@@ -85,6 +87,7 @@ app.include_router(thread_dumps.router, tags=["thread-dumps"])
 app.include_router(insights.router, tags=["insights"])
 app.include_router(ws.router, tags=["websocket"])
 app.include_router(services.router, tags=["services"])
+app.include_router(agents.router, tags=["agents"])
 from app.api import settings as settings_api
 app.include_router(settings_api.router, prefix="/api/settings", tags=["settings"])
 

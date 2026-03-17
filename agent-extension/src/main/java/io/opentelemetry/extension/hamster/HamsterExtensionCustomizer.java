@@ -14,6 +14,7 @@ import java.util.logging.Logger;
  * - 스레드 덤프 폴러 시작
  * - hamster-methods.conf 의 정확한 메서드 항목을 otel.instrumentation.methods.include 에 등록
  *   (와일드카드 규칙은 HamsterInstrumentationModule / ByteBuddy 가 처리)
+ * - min_span_duration_ms 필터링 (설정 파일 + 대시보드 폴링으로 동적 제어)
  */
 public class HamsterExtensionCustomizer implements AutoConfigurationCustomizerProvider {
 
@@ -25,6 +26,21 @@ public class HamsterExtensionCustomizer implements AutoConfigurationCustomizerPr
         // HTTP 서버 스팬명 개선: "GET /*" → "GET /actual/path"
         autoConfigurationCustomizer.addTracerProviderCustomizer(
                 (builder, config) -> builder.addSpanProcessor(new SpanNameEnrichmentProcessor()));
+        // 최소 duration 필터링 — hamster-methods.conf 의 min_span_duration_ms 값 사용
+        // JVM 옵션 없이 설정 파일 + 대시보드 폴링으로 동적 제어
+        autoConfigurationCustomizer.addSpanExporterCustomizer((exporter, config) -> {
+            MinDurationSpanExporter wrapper = new MinDurationSpanExporter(exporter);
+            long minMs = HamsterMethodsConfig.get().getLong("min_span_duration_ms", 0);
+            wrapper.setMinDurationMs(minMs);
+            if (minMs > 0) {
+                String msg = "[Hamster] MinDurationSpanExporter: filtering spans < " + minMs + "ms";
+                System.err.println(msg);
+                logger.warning(msg);
+            }
+            // HamsterThreadDumpExtension 이 폴링으로 동적 갱신할 수 있도록 홀더에 보관
+            MinDurationSpanExporterHolder.set(wrapper);
+            return wrapper;
+        });
     }
 
     private Map<String, String> buildProperties(ConfigProperties config) {

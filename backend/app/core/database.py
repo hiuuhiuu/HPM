@@ -160,3 +160,25 @@ async def ensure_errors_migration() -> None:
         logger.info("[DB] errors 마이그레이션 완료 (count/first_seen/dedup/unique)")
     except Exception as e:
         logger.warning(f"[DB] errors 마이그레이션 실패 (무시): {e}")
+
+
+async def ensure_agent_configs_table() -> None:
+    """agent_configs 테이블 생성 (멱등). 에이전트별 설정 저장."""
+    try:
+        async with AsyncSessionLocal() as session:
+            await session.execute(text("""
+                CREATE TABLE IF NOT EXISTS agent_configs (
+                    id                   SERIAL PRIMARY KEY,
+                    instance             TEXT NOT NULL,
+                    min_span_duration_ms BIGINT NOT NULL DEFAULT 0,
+                    updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+            """))
+            await session.execute(text("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_configs_instance
+                    ON agent_configs (instance);
+            """))
+            await session.commit()
+        logger.info("[DB] agent_configs 테이블 확인 완료")
+    except Exception as e:
+        logger.warning(f"[DB] agent_configs 테이블 생성 실패 (무시): {e}")

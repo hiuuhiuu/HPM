@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { apiFetch, apiPut, apiDelete } from '../hooks/useApi';
+import { apiFetch, apiPut, apiDelete, apiPatch } from '../hooks/useApi';
 import './Settings.css';
 
 // ── 타입 ────────────────────────────────────────────────
@@ -137,6 +137,9 @@ const Settings: React.FC = () => {
 
         {/* ── 서비스/인스턴스 관리 ── */}
         <InstanceManager onGlobalMessage={setMessage} />
+
+        {/* ── 에이전트 설정 ── */}
+        <AgentConfigManager onGlobalMessage={setMessage} />
 
         {/* ── 보안 안내 ── */}
         <section className="settings-section info-only">
@@ -533,6 +536,145 @@ function ConfirmDialog({
         </div>
       </div>
     </div>
+  );
+}
+
+// ── 에이전트 설정 관리 컴포넌트 ─────────────────────────
+
+interface AgentConfig {
+  instance: string;
+  min_span_duration_ms: number;
+  updated_at: string | null;
+}
+
+function AgentConfigManager({
+  onGlobalMessage,
+}: {
+  onGlobalMessage: (msg: { type: 'success' | 'error'; text: string } | null) => void;
+}) {
+  const [configs, setConfigs] = useState<AgentConfig[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<Record<string, string>>({}); // instance → draft value
+  const [saving, setSaving] = useState<string | null>(null);
+
+  const fetchConfigs = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await apiFetch<AgentConfig[]>('/api/agents');
+      setConfigs(data ?? []);
+    } catch {
+      /* 에이전트가 아직 없으면 빈 배열로 처리 */
+      setConfigs([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchConfigs(); }, [fetchConfigs]);
+
+  const handleSave = async (instance: string) => {
+    const raw = editing[instance];
+    const ms = parseInt(raw ?? '0', 10);
+    if (isNaN(ms) || ms < 0) {
+      onGlobalMessage({ type: 'error', text: '0 이상의 정수를 입력해 주세요.' });
+      return;
+    }
+    setSaving(instance);
+    try {
+      const updated = await apiPatch<AgentConfig>(`/api/agents/${encodeURIComponent(instance)}/config`, { min_span_duration_ms: ms });
+      onGlobalMessage({ type: 'success', text: `[${instance}] 설정이 저장됐습니다. 에이전트 다음 폴링(최대 60초) 후 반영됩니다.` });
+      setEditing(prev => { const n = { ...prev }; delete n[instance]; return n; });
+      setConfigs(prev => prev.map(c => c.instance === instance ? updated : c));
+    } catch {
+      onGlobalMessage({ type: 'error', text: `[${instance}] 설정 저장 실패.` });
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  return (
+    <section className="settings-section">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div>
+          <h2 style={{ marginBottom: 4 }}>에이전트 설정</h2>
+          <p className="section-desc" style={{ margin: 0 }}>
+            인스턴스별로 에이전트 동작을 제어합니다. 변경 사항은 최대 60초 후 에이전트에 반영됩니다.
+          </p>
+        </div>
+        <button onClick={fetchConfigs} style={{ ...btnStyle, background: '#252840', color: '#94a3b8' }}>
+          새로 고침
+        </button>
+      </div>
+
+      {loading ? (
+        <div style={{ color: '#64748b', fontSize: 13, padding: '16px 0' }}>로딩 중...</div>
+      ) : configs.length === 0 ? (
+        <div style={{ color: '#64748b', fontSize: 13, padding: '16px 0' }}>
+          아직 등록된 에이전트가 없습니다. 에이전트를 시작하면 자동으로 등록됩니다.
+        </div>
+      ) : (
+        <div style={cardStyle}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ color: '#64748b', fontSize: 11 }}>
+                <th style={thStyle}>인스턴스</th>
+                <th style={thStyle}>최소 처리시간 필터 (ms)</th>
+                <th style={thStyle}>최종 변경</th>
+                <th style={{ ...thStyle, textAlign: 'right' }}>저장</th>
+              </tr>
+            </thead>
+            <tbody>
+              {configs.map(cfg => {
+                const draft = editing[cfg.instance];
+                const isDirty = draft !== undefined && draft !== String(cfg.min_span_duration_ms);
+                return (
+                  <tr key={cfg.instance} style={{ borderTop: '1px solid #2d3148' }}>
+                    <td style={tdStyle}>{cfg.instance}</td>
+                    <td style={tdStyle}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input
+                          type="number"
+                          min={0}
+                          value={draft ?? cfg.min_span_duration_ms}
+                          onChange={e => setEditing(prev => ({ ...prev, [cfg.instance]: e.target.value }))}
+                          style={{
+                            width: 90, padding: '4px 8px', borderRadius: 6,
+                            border: `1px solid ${isDirty ? '#6366f1' : '#2d3148'}`,
+                            background: '#0d0f18', color: '#f1f5f9', fontSize: 13,
+                          }}
+                        />
+                        <span style={{ fontSize: 11, color: '#64748b' }}>
+                          {(draft ?? cfg.min_span_duration_ms) === 0 || (draft ?? String(cfg.min_span_duration_ms)) === '0'
+                            ? '비활성'
+                            : `${draft ?? cfg.min_span_duration_ms}ms 미만 제거`}
+                        </span>
+                      </div>
+                    </td>
+                    <td style={{ ...tdStyle, color: '#64748b', fontSize: 12 }}>
+                      {cfg.updated_at ? new Date(cfg.updated_at).toLocaleString('ko-KR') : '—'}
+                    </td>
+                    <td style={{ ...tdStyle, textAlign: 'right' }}>
+                      <button
+                        onClick={() => handleSave(cfg.instance)}
+                        disabled={!isDirty || saving === cfg.instance}
+                        style={{
+                          ...btnStyle, fontSize: 12,
+                          background: isDirty ? '#3730a3' : '#1e2238',
+                          color:      isDirty ? '#a5b4fc' : '#475569',
+                          cursor: isDirty ? 'pointer' : 'default',
+                        }}
+                      >
+                        {saving === cfg.instance ? '저장 중...' : '적용'}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }
 

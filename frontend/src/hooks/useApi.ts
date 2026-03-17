@@ -4,8 +4,18 @@ import { useEffect, useRef, useState } from 'react';
 // REACT_APP_API_URL은 개발환경(localhost:3000)에서만 설정 필요
 const BASE_URL = process.env.REACT_APP_API_URL || '';
 
+/** 동일 메시지를 30초 내 재발행 억제 */
+const _errorLastSeen = new Map<string, number>();
+const ERROR_DEDUP_MS = 30_000;
+
 /** 글로벌 API 에러 이벤트 발행 (App.tsx의 Toast가 수신) */
 export function notifyApiError(message: string): void {
+  const now = Date.now();
+  const last = _errorLastSeen.get(message);
+  if (last && now - last < ERROR_DEDUP_MS) return;
+  // 만료된 항목 정리 (Map 무한 증가 방지)
+  _errorLastSeen.forEach((ts, key) => { if (now - ts >= ERROR_DEDUP_MS) _errorLastSeen.delete(key); });
+  _errorLastSeen.set(message, now);
   window.dispatchEvent(new CustomEvent('api-error', { detail: message }));
 }
 
