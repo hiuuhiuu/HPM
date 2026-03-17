@@ -1381,12 +1381,12 @@ function ActiveTransactionsPanel({
             </span>
           )}
         </div>
-        <span style={{ fontSize: 12, color: '#475569' }}>30초 이내 · 지연 순 · 3초 갱신 · 클릭 시 콜트리 조회</span>
+        <span style={{ fontSize: 12, color: '#475569' }}>응답 미수신(수행 중) · 지연 순 · 3초 갱신 · 클릭 시 콜트리 조회</span>
       </div>
 
       {!rows.length ? (
         <div style={{ padding: '24px 0', textAlign: 'center', color: '#475569', fontSize: 13 }}>
-          최근 30초 이내 수행된 거래가 없습니다.
+          현재 수행 중인 거래가 없습니다.
         </div>
       ) : (
         <div style={{ border: '1px solid #2d3148', borderRadius: 8, overflow: 'hidden' }}>

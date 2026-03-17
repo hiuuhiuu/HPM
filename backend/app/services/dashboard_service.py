@@ -466,21 +466,22 @@ async def get_instance_topology(
 
 
 async def get_active_summary(db: AsyncSession) -> List[Dict]:
-    """인스턴스별 최근 30초 이내 완료된 거래(root span) 목록"""
+    """인스턴스별 현재 수행 중인 거래(root span, end_time IS NULL) 목록.
+    hang 감지를 위해 최대 60초 이내에 시작된 span만 포함한다."""
     sql = """
         SELECT
             service,
             instance,
             trace_id,
             name AS span_name,
-            EXTRACT(EPOCH FROM (end_time - start_time)) * 1000 AS duration_ms,
+            EXTRACT(EPOCH FROM (NOW() - start_time)) * 1000 AS duration_ms,
             status,
             start_time
         FROM traces
         WHERE parent_span_id IS NULL
-          AND start_time > NOW() - INTERVAL '30 seconds'
-          AND end_time IS NOT NULL
-        ORDER BY service, instance, start_time DESC
+          AND end_time IS NULL
+          AND start_time > NOW() - INTERVAL '60 seconds'
+        ORDER BY service, instance, start_time ASC
         LIMIT 200
     """
     r = await db.execute(text(sql))
