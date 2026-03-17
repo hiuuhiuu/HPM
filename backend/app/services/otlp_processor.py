@@ -121,6 +121,9 @@ _SPAN_KIND_MAP = {
 }
 
 
+_HTTP_METHODS = frozenset(["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+
+
 def _normalize_span_name(name: str, attrs: Dict[str, Any]) -> str:
     """
     J2EE WAS(JEUS / Tomcat / WebLogic) + Spring Boot 공통 스팬 이름 정규화.
@@ -130,6 +133,7 @@ def _normalize_span_name(name: str, attrs: Dict[str, Any]) -> str:
     2. 스팬 이름(route 부분)이 WAS별 정적 리소스 wildcard 패턴인 경우 → '[정적 리소스]'
     3. 스팬 이름이 WAS 정적 서블릿 클래스명인 경우 → '[정적 리소스]'
     4. 스팬 이름에 와일드카드(*)가 포함된 경우 → 실제 경로(http.target/url.path)로 대체
+    5. 스팬 이름이 HTTP 메서드만 있는 경우 → url.full/http.url 경로로 보완
     """
     method = attrs.get("http.method") or attrs.get("http.request.method", "")
     target = attrs.get("http.target", "") or attrs.get("url.path", "")
@@ -160,6 +164,26 @@ def _normalize_span_name(name: str, attrs: Dict[str, Any]) -> str:
     #    예: "POST /backbone/*" → "POST /rp/api/ctm/mbr/CTM1300U00/listMembInfo.ap"
     if "*" in route and path:
         return f"{method} {path}".strip() if method else path
+
+    # 5) 스팬 이름이 HTTP 메서드만인 경우 → url.full / http.url 에서 경로 추출
+    #    예: "GET" (HTTP CLIENT 스팬) → "GET /kit/reflector"
+    if bare.upper() in _HTTP_METHODS:
+        full_url = attrs.get("url.full", "") or attrs.get("http.url", "")
+        if full_url:
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(full_url)
+                url_path = parsed.path or "/"
+                host = parsed.netloc or parsed.hostname or ""
+                # 외부 도메인 호출인 경우 host 포함
+                if host:
+                    return f"{bare} {host}{url_path}".strip()
+                return f"{bare} {url_path}".strip()
+            except Exception:
+                pass
+        # url.full 없으면 http.target/url.path 라도 붙이기
+        if path:
+            return f"{bare} {path}".strip()
 
     return name
 
