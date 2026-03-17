@@ -229,7 +229,7 @@ function TraceViewSettings() {
       <h2>트레이스 콜 트리 뷰 설정</h2>
       <p className="section-desc">
         트레이싱 상세 페이지의 콜 트리/워터폴에서 매우 짧은 스팬을 숨겨 노이즈를 줄입니다.<br />
-        ERROR 스팬과 Critical Path 스팬은 설정값에 관계없이 항상 표시됩니다.
+        ERROR 스팬은 설정값에 관계없이 항상 표시됩니다.
       </p>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
         <label style={{ fontSize: 13, color: '#94a3b8' }}>
@@ -251,7 +251,7 @@ function TraceViewSettings() {
         {saved && <span style={{ fontSize: 12, color: '#4ade80' }}>저장됨 ✓</span>}
       </div>
       <p style={{ fontSize: 12, color: '#475569', marginTop: 8 }}>
-        예: 5 입력 시 5ms 미만인 내부 메서드 스팬이 콜 트리에서 숨겨집니다. 트레이스 뷰를 열 때 이 값이 자동 적용되며, 뷰 내 입력창에서 즉시 조정할 수도 있습니다.
+        예: 5 입력 시 5ms 미만인 내부 메서드 스팬이 콜 트리에서 숨겨집니다. 트레이스 뷰를 열 때 이 값이 자동 적용됩니다.
       </p>
     </section>
   );

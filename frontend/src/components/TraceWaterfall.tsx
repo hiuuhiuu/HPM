@@ -255,7 +255,7 @@ export default function TraceWaterfall({ trace }: Props) {
   const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null);
   const [collapsed, setCollapsed]       = useState<Set<string>>(new Set());
   const [hideHealthChecks, setHideHealthChecks] = useState(true);
-  const [minSpanMs, setMinSpanMs]       = useState(() => Number(localStorage.getItem('trace_min_span_ms') || '0'));
+  const minSpanMs = Number(localStorage.getItem('trace_min_span_ms') || '0');
   const [showLogs, setShowLogs]         = useState(false);
   const [traceLogs, setTraceLogs]       = useState<LogItem[]>([]);
   const [logsLoading, setLogsLoading]   = useState(false);
@@ -370,32 +370,19 @@ export default function TraceWaterfall({ trace }: Props) {
           )}
         </label>
 
-        {/* 단기 스팬 필터 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#94a3b8', userSelect: 'none' }}>
-          <input
-            type="number"
-            min={0}
-            step={1}
-            value={minSpanMs}
-            onChange={e => {
-              const v = Math.max(0, Number(e.target.value));
-              setMinSpanMs(v);
-              localStorage.setItem('trace_min_span_ms', String(v));
-            }}
-            style={{
-              width: 56, background: '#1e2035', border: '1px solid #2d3148',
-              color: '#e2e8f0', borderRadius: 4, padding: '2px 6px', fontSize: 12,
-              outline: 'none',
-            }}
-            title="0이면 모두 표시. 설정 페이지에서 기본값 지정 가능."
-          />
-          <span>ms 이하 숨김</span>
-          {minDurationHiddenCount > 0 && (
-            <span style={{ fontSize: 11, color: '#475569', background: '#1e2035', borderRadius: 10, padding: '0 6px' }}>
-              {minDurationHiddenCount}개
+        {/* 단기 스팬 필터 — 설정값 표시 전용 (변경은 설정 페이지에서) */}
+        {minSpanMs > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#475569', userSelect: 'none' }}>
+            <span style={{ background: '#1e2035', border: '1px solid #2d3148', borderRadius: 4, padding: '2px 8px' }}>
+              {minSpanMs}ms 이하 숨김
             </span>
-          )}
-        </div>
+            {minDurationHiddenCount > 0 && (
+              <span style={{ fontSize: 11, color: '#475569', background: '#1e2035', borderRadius: 10, padding: '0 6px' }}>
+                {minDurationHiddenCount}개
+              </span>
+            )}
+          </div>
+        )}
 
         {/* 콜 트리 전체 펼치기/접기 */}
         {viewTab === 'calltree' && (
