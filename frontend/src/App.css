@@ -1,6 +1,4 @@
-/* Inter 폰트 (폐쇄망에서는 무시되고 시스템 폰트로 폴백) */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-
+/* 폐쇄망 환경: Google Fonts 외부 요청 제거 → 시스템 폰트 사용 */
 /* ── CSS 디자인 토큰 ───────────────────────────────────────────── */
 :root {
   /* 배경 */
