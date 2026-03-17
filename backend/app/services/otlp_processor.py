@@ -386,6 +386,31 @@ async def process_traces(db: AsyncSession, body: bytes) -> int:
                             exc_attrs = evt.get("attributes", {})
                             break
 
+                    # HTTP 관련 attributes 추출 (OTel 구버전/신버전 semconv 모두 지원)
+                    http_status = (
+                        attrs.get("http.response.status_code")  # new semconv
+                        or attrs.get("http.status_code")        # old semconv
+                    )
+                    http_url = (
+                        attrs.get("url.full")       # new semconv
+                        or attrs.get("http.url")    # old semconv
+                        or attrs.get("http.target")
+                    )
+                    http_method = (
+                        attrs.get("http.request.method")  # new semconv
+                        or attrs.get("http.method")       # old semconv
+                    )
+                    # HTTP 에러 타입: "HttpError" + 상태코드 (exception 없을 때 사용)
+                    http_error_type = f"HttpError {http_status}" if http_status else None
+                    # HTTP 에러 메시지: "POST https://... → 503"
+                    if http_status and (http_method or http_url):
+                        parts = [p for p in [http_method, http_url] if p]
+                        http_error_msg = f"{' '.join(parts)} → {http_status}"
+                    elif http_status:
+                        http_error_msg = f"HTTP {http_status}"
+                    else:
+                        http_error_msg = None
+
                     error_rows.append({
                         "service": service,
                         "instance": instance,
@@ -393,12 +418,14 @@ async def process_traces(db: AsyncSession, body: bytes) -> int:
                             exc_attrs.get("exception.type")
                             or attrs.get("exception.type")
                             or span.status.message
+                            or http_error_type
                             or "UnknownError"
                         ),
                         "message": (
-                            span.status.message
-                            or exc_attrs.get("exception.message")
+                            exc_attrs.get("exception.message")
                             or attrs.get("exception.message")
+                            or http_error_msg
+                            or span.status.message
                             or "Unknown error"
                         ),
                         "stack_trace": (
