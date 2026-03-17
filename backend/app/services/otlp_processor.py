@@ -121,15 +121,19 @@ _SPAN_KIND_MAP = {
 }
 
 
+_HTTP_METHODS = frozenset(["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+
+
 def _normalize_span_name(name: str, attrs: Dict[str, Any]) -> str:
     """
     J2EE WAS(JEUS / Tomcat / WebLogic) + Spring Boot 공통 스팬 이름 정규화.
-    정적 리소스 요청을 '[정적 리소스]'로 통일한다.
 
     판별 우선순위:
-    1. http.target / url.path 확장자가 정적 파일 확장자인 경우
-    2. 스팬 이름(route 부분)이 WAS별 정적 리소스 wildcard 패턴인 경우
-    3. 스팬 이름이 WAS 정적 서블릿 클래스명인 경우
+    1. http.target / url.path 확장자가 정적 파일 확장자인 경우 → '[정적 리소스]'
+    2. 스팬 이름(route 부분)이 WAS별 정적 리소스 wildcard 패턴인 경우 → '[정적 리소스]'
+    3. 스팬 이름이 WAS 정적 서블릿 클래스명인 경우 → '[정적 리소스]'
+    4. 스팬 이름에 와일드카드(*)가 포함된 경우 → 실제 경로(http.target/url.path)로 대체
+    5. 스팬 이름이 HTTP 메서드만 있는 경우 → url.full/http.url 경로로 보완
     """
     method = attrs.get("http.method") or attrs.get("http.request.method", "")
     target = attrs.get("http.target", "") or attrs.get("url.path", "")
@@ -155,6 +159,31 @@ def _normalize_span_name(name: str, attrs: Dict[str, Any]) -> str:
     # 3) 서블릿 클래스명 노출 (WebLogic FileServlet 등)
     if route in _STATIC_SPAN_EXACT or bare in _STATIC_SPAN_EXACT:
         return _static_name()
+
+    # 4) 와일드카드(*) 포함 route 템플릿 → 실제 경로로 대체
+    #    예: "POST /backbone/*" → "POST /rp/api/ctm/mbr/CTM1300U00/listMembInfo.ap"
+    if "*" in route and path:
+        return f"{method} {path}".strip() if method else path
+
+    # 5) 스팬 이름이 HTTP 메서드만인 경우 → url.full / http.url 에서 경로 추출
+    #    예: "GET" (HTTP CLIENT 스팬) → "GET /kit/reflector"
+    if bare.upper() in _HTTP_METHODS:
+        full_url = attrs.get("url.full", "") or attrs.get("http.url", "")
+        if full_url:
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(full_url)
+                url_path = parsed.path or "/"
+                host = parsed.netloc or parsed.hostname or ""
+                # 외부 도메인 호출인 경우 host 포함
+                if host:
+                    return f"{bare} {host}{url_path}".strip()
+                return f"{bare} {url_path}".strip()
+            except Exception:
+                pass
+        # url.full 없으면 http.target/url.path 라도 붙이기
+        if path:
+            return f"{bare} {path}".strip()
 
     return name
 
@@ -357,6 +386,31 @@ async def process_traces(db: AsyncSession, body: bytes) -> int:
                             exc_attrs = evt.get("attributes", {})
                             break
 
+                    # HTTP 관련 attributes 추출 (OTel 구버전/신버전 semconv 모두 지원)
+                    http_status = (
+                        attrs.get("http.response.status_code")  # new semconv
+                        or attrs.get("http.status_code")        # old semconv
+                    )
+                    http_url = (
+                        attrs.get("url.full")       # new semconv
+                        or attrs.get("http.url")    # old semconv
+                        or attrs.get("http.target")
+                    )
+                    http_method = (
+                        attrs.get("http.request.method")  # new semconv
+                        or attrs.get("http.method")       # old semconv
+                    )
+                    # HTTP 에러 타입: "HttpError" + 상태코드 (exception 없을 때 사용)
+                    http_error_type = f"HttpError {http_status}" if http_status else None
+                    # HTTP 에러 메시지: "POST https://... → 503"
+                    if http_status and (http_method or http_url):
+                        parts = [p for p in [http_method, http_url] if p]
+                        http_error_msg = f"{' '.join(parts)} → {http_status}"
+                    elif http_status:
+                        http_error_msg = f"HTTP {http_status}"
+                    else:
+                        http_error_msg = None
+
                     error_rows.append({
                         "service": service,
                         "instance": instance,
@@ -364,12 +418,14 @@ async def process_traces(db: AsyncSession, body: bytes) -> int:
                             exc_attrs.get("exception.type")
                             or attrs.get("exception.type")
                             or span.status.message
+                            or http_error_type
                             or "UnknownError"
                         ),
                         "message": (
-                            span.status.message
-                            or exc_attrs.get("exception.message")
+                            exc_attrs.get("exception.message")
                             or attrs.get("exception.message")
+                            or http_error_msg
+                            or span.status.message
                             or "Unknown error"
                         ),
                         "stack_trace": (
@@ -400,10 +456,17 @@ async def process_traces(db: AsyncSession, body: bytes) -> int:
             text("""
                 INSERT INTO errors
                     (service, instance, error_type, message, stack_trace,
-                     trace_id, span_id, attributes)
+                     trace_id, span_id, attributes, first_seen)
                 VALUES
                     (:service, :instance, :error_type, :message, :stack_trace,
-                     :trace_id, :span_id, CAST(:attributes AS jsonb))
+                     :trace_id, :span_id, CAST(:attributes AS jsonb), NOW())
+                ON CONFLICT (service, error_type, message) DO UPDATE SET
+                    count    = errors.count + 1,
+                    time     = NOW(),
+                    trace_id = EXCLUDED.trace_id,
+                    span_id  = EXCLUDED.span_id,
+                    instance = EXCLUDED.instance,
+                    resolved = FALSE
             """),
             error_rows,
         )

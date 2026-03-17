@@ -58,13 +58,17 @@ public class HamsterExtensionCustomizer implements AutoConfigurationCustomizerPr
                 methodsInclude = existing + ";" + methodsInclude;
             }
             extraProps.put("otel.instrumentation.methods.include", methodsInclude);
-            logger.info("[Hamster] Exact method tracing: " + methodsInclude);
+            String msg = "[Hamster] Exact method tracing: " + methodsInclude;
+            System.err.println(msg);
+            logger.warning(msg);
         }
 
         // 와일드카드 규칙 수 로그 출력 (ByteBuddy 모듈이 처리)
         int wildcardCount = HamsterMethodsConfig.get().wildcardRules.size();
         if (wildcardCount > 0) {
-            logger.info("[Hamster] Wildcard rules registered for ByteBuddy: " + wildcardCount);
+            String msg = "[Hamster] Wildcard rules registered for ByteBuddy: " + wildcardCount;
+            System.err.println(msg);
+            logger.warning(msg);
         }
 
         return extraProps;

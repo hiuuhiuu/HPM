@@ -5,18 +5,33 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>io.opentelemetry.extension</groupId>
-    <artifactId>hamster-agent-extension</artifactId>
+    <artifactId>hamster-agent</artifactId>
     <version>0.1.0</version>
 
     <properties>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
         <otel.version>1.31.0</otel.version>
+        <!-- Extension API 버전 (alpha — ByteBuddy/InstrumentationModule 등) -->
         <otel.agent.version>2.11.0-alpha</otel.agent.version>
+        <!-- 런타임 agent JAR 버전 (stable) — extension API alpha 와 동일 minor -->
+        <otel.agent.runtime.version>2.11.0</otel.agent.runtime.version>
+        <finalName>hamster-agent</finalName>
     </properties>
 
     <dependencies>
-        <!-- OTel SDK autoconfigure (AutoConfigurationCustomizerProvider) -->
+        <!--
+          OTel Java Agent JAR — compile scope 로 shade 에 포함시켜 올인원 JAR 생성.
+          다른 OTel 의존성은 agent JAR 에 이미 포함되어 있으므로 provided 유지.
+        -->
+        <dependency>
+            <groupId>io.opentelemetry.javaagent</groupId>
+            <artifactId>opentelemetry-javaagent</artifactId>
+            <version>${otel.agent.runtime.version}</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <!-- OTel SDK autoconfigure SPI (AutoConfigurationCustomizerProvider) -->
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-sdk-extension-autoconfigure-spi</artifactId>
@@ -29,14 +44,14 @@
             <version>${otel.version}</version>
             <scope>provided</scope>
         </dependency>
-        <!-- OTel API (Span, Tracer, Scope 등 — Advice에서 사용) -->
+        <!-- OTel API (Span, Tracer, Scope — Advice 에서 사용) -->
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-api</artifactId>
             <version>${otel.version}</version>
             <scope>provided</scope>
         </dependency>
-        <!-- OTel Java Agent Extension API (InstrumentationModule, TypeInstrumentation) + ByteBuddy -->
+        <!-- OTel Java Agent Extension API (InstrumentationModule, TypeInstrumentation, ByteBuddy) -->
         <dependency>
             <groupId>io.opentelemetry.javaagent</groupId>
             <artifactId>opentelemetry-javaagent-extension-api</artifactId>
@@ -46,6 +61,7 @@
     </dependencies>
 
     <build>
+        <finalName>${finalName}</finalName>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -57,6 +73,30 @@
                         <goals>
                             <goal>shade</goal>
                         </goals>
+                        <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <transformers>
+                                <!--
+                                  핵심: META-INF/services/ 파일을 머지.
+                                  이 설정 없이 OTel agent JAR 과 합치면 extension 의
+                                  InstrumentationModule / AutoConfigurationCustomizerProvider
+                                  SPI 등록이 agent 쪽 파일에 덮어쓰여 사라짐.
+                                -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                                <!--
+                                  올인원 agent JAR 에 필요한 MANIFEST 항목.
+                                  Premain-Class 가 없으면 -javaagent: 로 사용 불가.
+                                -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <manifestEntries>
+                                        <Premain-Class>io.opentelemetry.javaagent.OpenTelemetryAgent</Premain-Class>
+                                        <Agent-Class>io.opentelemetry.javaagent.OpenTelemetryAgent</Agent-Class>
+                                        <Can-Redefine-Classes>true</Can-Redefine-Classes>
+                                        <Can-Retransform-Classes>true</Can-Retransform-Classes>
+                                    </manifestEntries>
+                                </transformer>
+                            </transformers>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>

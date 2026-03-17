@@ -64,6 +64,7 @@ interface RecentError {
   error_type: string;
   message: string;
   trace_id: string | null;
+  count: number;
 }
 interface ServiceActivity {
   service: string;
@@ -577,8 +578,25 @@ export default function Dashboard() {
                     <span style={{ fontSize: 12, color: '#fca5a5', fontWeight: 600 }}>
                       {err.error_type}
                     </span>
+                    {err.count > 1 && (
+                      <span style={{
+                        fontSize: 10, color: '#fff', background: '#ef4444',
+                        borderRadius: 10, padding: '1px 6px', fontWeight: 700,
+                      }}>
+                        {err.count}
+                      </span>
+                    )}
                     {!service && defaultLevel !== 'instance' && (
                       <span style={{ fontSize: 11, color: '#475569' }}>{err.service}</span>
+                    )}
+                    {err.trace_id && (
+                      <Link
+                        to={`/traces?trace_id=${err.trace_id}`}
+                        onClick={e => e.stopPropagation()}
+                        style={{ marginLeft: 'auto', fontSize: 10, color: '#6366f1', textDecoration: 'none', whiteSpace: 'nowrap' }}
+                      >
+                        트레이스 →
+                      </Link>
                     )}
                   </div>
                   <div style={{ fontSize: 12, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -1381,12 +1399,12 @@ function ActiveTransactionsPanel({
             </span>
           )}
         </div>
-        <span style={{ fontSize: 12, color: '#475569' }}>30초 이내 · 지연 순 · 3초 갱신 · 클릭 시 콜트리 조회</span>
+        <span style={{ fontSize: 12, color: '#475569' }}>응답 미수신(수행 중) · 지연 순 · 3초 갱신 · 클릭 시 콜트리 조회</span>
       </div>
 
       {!rows.length ? (
         <div style={{ padding: '24px 0', textAlign: 'center', color: '#475569', fontSize: 13 }}>
-          최근 30초 이내 수행된 거래가 없습니다.
+          현재 수행 중인 거래가 없습니다.
         </div>
       ) : (
         <div style={{ border: '1px solid #2d3148', borderRadius: 8, overflow: 'hidden' }}>

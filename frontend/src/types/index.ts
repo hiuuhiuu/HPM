@@ -114,6 +114,7 @@ export interface TraceStats {
 export interface ErrorItem {
   id: number;
   time: string;
+  first_seen: string;
   service: string;
   instance: string;
   error_type: string;
@@ -123,6 +124,7 @@ export interface ErrorItem {
   span_id: string | null;
   resolved: boolean;
   attributes: Record<string, unknown>;
+  count: number;
 }
 
 export interface ErrorList {

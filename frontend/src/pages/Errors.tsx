@@ -141,16 +141,17 @@ export default function Errors() {
               <th style={thS}>메시지</th>
               <th style={thS}>서비스</th>
               <th style={thS}>상태</th>
-              <th style={thS}>발생 시각</th>
+              <th style={{ ...thS, textAlign: 'center' }}>횟수</th>
+              <th style={thS}>최근 발생</th>
               <th style={thS}></th>
             </tr>
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={6} style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>로딩 중...</td></tr>
+              <tr><td colSpan={7} style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>로딩 중...</td></tr>
             )}
             {!loading && !errorList?.items.length && (
-              <tr><td colSpan={6} style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>
+              <tr><td colSpan={7} style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>
                 {service
                   ? `'${service}' 서비스의 ${range} 내 에러가 없습니다.`
                   : resolved !== 'all'
@@ -192,6 +193,18 @@ export default function Errors() {
                         {item.resolved ? '해결됨' : '미해결'}
                       </span>
                     </td>
+                    <td style={{ ...tdS, textAlign: 'center' }}>
+                      {item.count > 1 ? (
+                        <span style={{
+                          display: 'inline-block', padding: '2px 8px', borderRadius: 10,
+                          background: '#450a0a', color: '#fca5a5', fontSize: 12, fontWeight: 700,
+                        }}>
+                          {item.count}
+                        </span>
+                      ) : (
+                        <span style={{ color: '#475569', fontSize: 12 }}>1</span>
+                      )}
+                    </td>
                     <td style={{ ...tdS, color: '#64748b', fontSize: 12 }}>
                       {format(parseISO(item.time), 'MM-dd HH:mm:ss')}
                     </td>
@@ -214,7 +227,7 @@ export default function Errors() {
                   {/* 상세 패널 */}
                   {isExpanded && (
                     <tr>
-                      <td colSpan={6} style={{ background: '#12141f', borderBottom: '1px solid #2d3148', padding: 0 }}>
+                      <td colSpan={7} style={{ background: '#12141f', borderBottom: '1px solid #2d3148', padding: 0 }}>
                         <ErrorDetail item={item} />
                       </td>
                     </tr>
@@ -261,7 +274,9 @@ function ErrorDetail({ item }: { item: ErrorItem }) {
             <InfoRow label="에러 유형"  value={item.error_type} />
             <InfoRow label="서비스"     value={item.service} />
             <InfoRow label="인스턴스"   value={item.instance || '—'} />
-            <InfoRow label="발생 시각"  value={format(parseISO(item.time), 'yyyy-MM-dd HH:mm:ss.SSS')} />
+            <InfoRow label="발생 횟수"  value={`${item.count}회`} />
+            <InfoRow label="최초 발생"  value={format(parseISO(item.first_seen), 'yyyy-MM-dd HH:mm:ss')} />
+            <InfoRow label="최근 발생"  value={format(parseISO(item.time), 'yyyy-MM-dd HH:mm:ss.SSS')} />
           </div>
         </div>
 

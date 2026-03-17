@@ -8,5 +8,5 @@ RUN mvn clean package -DskipTests
 # Final Stage (just to copy the artifact out)
 FROM alpine:latest
 WORKDIR /dist
-COPY --from=build /app/target/hamster-agent-extension-0.1.0.jar /dist/hamster-agent-extension.jar
-CMD ["cp", "/dist/hamster-agent-extension.jar", "/out/"]
+COPY --from=build /app/target/hamster-agent-0.1.0.jar /dist/hamster-agent.jar
+CMD ["cp", "/dist/hamster-agent.jar", "/out/"]

@@ -46,15 +46,77 @@ function buildTree(spans: SpanDetail[]): { roots: SpanNode[]; flat: SpanNode[]; 
 
 // ── 헬스체크/노이즈 스팬 감지 ──────────────────────────
 
+// DB 커넥션풀 헬스체크/검증 쿼리 판별
+// stmt: db.statement 또는 db.query.text (대문자, trim)
+// name: span name (대문자, trim)
+function isDbValidationQuery(stmt: string, name: string): boolean {
+  // ── 공통 ──────────────────────────────────────────────────
+  // span name이 "SELECT <단순식별자>" 패턴 (DBCP validationQuery 결과)
+  // 예: "SELECT covi_smart", "SELECT ORCL"
+  if (/^SELECT\s+\w+$/.test(name)) return true;
+
+  // ── PostgreSQL ─────────────────────────────────────────────
+  if (stmt === 'SELECT 1' || stmt === 'SELECT 1;') return true;
+  if (stmt.startsWith('SELECT VERSION(') || stmt.startsWith('SELECT VERSION ')) return true;
+  if (stmt.includes('PG_IS_IN_RECOVERY') || stmt.includes('PG_CATALOG.')) return true;
+  // MySQL/PostgreSQL SHOW 계열 (짧은 관리 쿼리)
+  if (stmt.startsWith('SHOW ') && stmt.length < 40) return true;
+
+  // ── MySQL / MariaDB ────────────────────────────────────────
+  if (stmt === '/* PING */' || stmt === 'SELECT 1 /* PING */') return true;
+  if (stmt === 'SELECT 1 + 1' || stmt === 'SELECT 1+1') return true;
+  // MySQL Connector/J가 보내는 검증 쿼리
+  if (stmt === '/* JDBC PING */ SELECT 1') return true;
+  // HikariCP MySQL 기본 검증
+  if (stmt === 'SELECT 1' || stmt === 'SELECT 1;') return true;
+
+  // ── MSSQL (SQL Server) ────────────────────────────────────
+  if (stmt.startsWith('SELECT TOP 1') && stmt.length < 50) return true;
+  if (stmt === 'SELECT GETDATE()' || stmt === 'SELECT GETDATE() AS NOW') return true;
+  if (stmt === 'SELECT @@VERSION' || stmt === 'SELECT @@SERVERNAME') return true;
+  if (stmt === 'SELECT 1' || stmt === 'SELECT 1;') return true;
+
+  // ── Oracle ────────────────────────────────────────────────
+  if (stmt === 'SELECT 1 FROM DUAL' || stmt === 'SELECT 1 FROM DUAL;') return true;
+  if (stmt === 'SELECT SYSDATE FROM DUAL' || stmt === 'SELECT SYSDATE FROM DUAL;') return true;
+  if (stmt === 'SELECT * FROM DUAL' || stmt === 'SELECT 0 FROM DUAL') return true;
+  if (stmt === 'SELECT 1 FROM SYS.DUAL') return true;
+  // Oracle JDBC ping
+  if (stmt.startsWith('BEGIN') && stmt.includes('NULL') && stmt.length < 30) return true;
+
+  // ── Tibero ────────────────────────────────────────────────
+  // Tibero는 Oracle 호환이나 고유 패턴 포함
+  if (stmt === 'SELECT 1 FROM DUAL' || stmt === 'SELECT SYSDATE FROM DUAL') return true;
+  if (stmt === 'SELECT * FROM V$VERSION' || stmt.startsWith('SELECT BANNER FROM V$VERSION')) return true;
+  // Tibero JDBC 기본 검증
+  if (stmt === 'SELECT CURRENT_TIMESTAMP FROM DUAL') return true;
+
+  // ── Altibase ──────────────────────────────────────────────
+  if (stmt === 'SELECT 1 FROM DUAL' || stmt === 'SELECT SYSDATE FROM DUAL') return true;
+  if (stmt === 'SELECT 1 FROM V$VERSION') return true;
+
+  // ── H2 / 임베디드 DB ──────────────────────────────────────
+  if (stmt === 'SELECT 1' || stmt === 'SELECT H2VERSION()') return true;
+
+  // ── WAS/DBCP 공통 짧은 검증 패턴 ─────────────────────────
+  // 매우 짧고 결과 없는 쿼리 (20자 이하 단순 SELECT)
+  if (stmt.length <= 20 && stmt.startsWith('SELECT') && !stmt.includes('FROM ')) return true;
+
+  return false;
+}
+
 function isHealthCheck(span: SpanDetail): boolean {
   const attrs = span.attributes as Record<string, unknown>;
   const stmt = String(attrs['db.statement'] || attrs['db.query.text'] || '').trim().toUpperCase();
   const name = span.name.trim().toUpperCase();
-  if (stmt === 'SELECT 1' || stmt === 'SELECT 1;') return true;
-  if (stmt.startsWith('SELECT VERSION')) return true;
-  if (stmt.includes('PG_IS_IN_RECOVERY') || stmt.includes('PG_CATALOG.')) return true;
-  if (stmt.startsWith('SHOW ') && stmt.length < 30) return true;
-  if (name === '/HEALTH' || name === 'GET /HEALTH' || name === 'HEALTH') return true;
+
+  // HTTP 헬스체크 엔드포인트
+  if (name === '/HEALTH' || name === 'GET /HEALTH' || name === 'HEALTH' ||
+      name === 'GET /ACTUATOR/HEALTH' || name === '/ACTUATOR/HEALTH') return true;
+
+  // DB 커넥션풀 검증 쿼리
+  if (isDbValidationQuery(stmt, name)) return true;
+
   return false;
 }
 
@@ -193,7 +255,7 @@ export default function TraceWaterfall({ trace }: Props) {
   const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null);
   const [collapsed, setCollapsed]       = useState<Set<string>>(new Set());
   const [hideHealthChecks, setHideHealthChecks] = useState(true);
-  const [minSpanMs, setMinSpanMs]       = useState(() => Number(localStorage.getItem('trace_min_span_ms') || '0'));
+  const minSpanMs = Number(localStorage.getItem('trace_min_span_ms') || '0');
   const [showLogs, setShowLogs]         = useState(false);
   const [traceLogs, setTraceLogs]       = useState<LogItem[]>([]);
   const [logsLoading, setLogsLoading]   = useState(false);
@@ -227,7 +289,7 @@ export default function TraceWaterfall({ trace }: Props) {
     if (minSpanMs <= 0) return null;
     const ids = new Set<string>();
     function mark(node: SpanNode): boolean {
-      const self = node.status === 'ERROR' || criticalPath.has(node.span_id) || node.duration_ms >= minSpanMs;
+      const self = node.status === 'ERROR' || node.duration_ms >= minSpanMs;
       const child = node.children.some(c => mark(c));
       if (self || child) ids.add(node.span_id);
       return self || child;
@@ -308,32 +370,19 @@ export default function TraceWaterfall({ trace }: Props) {
           )}
         </label>
 
-        {/* 단기 스팬 필터 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#94a3b8', userSelect: 'none' }}>
-          <input
-            type="number"
-            min={0}
-            step={1}
-            value={minSpanMs}
-            onChange={e => {
-              const v = Math.max(0, Number(e.target.value));
-              setMinSpanMs(v);
-              localStorage.setItem('trace_min_span_ms', String(v));
-            }}
-            style={{
-              width: 56, background: '#1e2035', border: '1px solid #2d3148',
-              color: '#e2e8f0', borderRadius: 4, padding: '2px 6px', fontSize: 12,
-              outline: 'none',
-            }}
-            title="0이면 모두 표시. 설정 페이지에서 기본값 지정 가능."
-          />
-          <span>ms 이하 숨김</span>
-          {minDurationHiddenCount > 0 && (
-            <span style={{ fontSize: 11, color: '#475569', background: '#1e2035', borderRadius: 10, padding: '0 6px' }}>
-              {minDurationHiddenCount}개
+        {/* 단기 스팬 필터 — 설정값 표시 전용 (변경은 설정 페이지에서) */}
+        {minSpanMs > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#475569', userSelect: 'none' }}>
+            <span style={{ background: '#1e2035', border: '1px solid #2d3148', borderRadius: 4, padding: '2px 8px' }}>
+              {minSpanMs}ms 이하 숨김
             </span>
-          )}
-        </div>
+            {minDurationHiddenCount > 0 && (
+              <span style={{ fontSize: 11, color: '#475569', background: '#1e2035', borderRadius: 10, padding: '0 6px' }}>
+                {minDurationHiddenCount}개
+              </span>
+            )}
+          </div>
+        )}
 
         {/* 콜 트리 전체 펼치기/접기 */}
         {viewTab === 'calltree' && (

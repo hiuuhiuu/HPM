@@ -1,6 +1,4 @@
-/* Inter 폰트 (폐쇄망에서는 무시되고 시스템 폰트로 폴백) */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-
+/* 폐쇄망 환경: Google Fonts 외부 요청 제거 → 시스템 폰트 사용 */
 /* ── CSS 디자인 토큰 ───────────────────────────────────────────── */
 :root {
   /* 배경 */
@@ -139,6 +137,16 @@ body {
   to   { transform: rotate(360deg); }
 }
 
+/* 몸통 바운스 — 달리는 리듬에 맞춰 위아래로 가볍게 튐 */
+.hamster-body-group {
+  animation: body-bob 0.3s ease-in-out infinite alternate;
+}
+
+@keyframes body-bob {
+  from { transform: translateY(0px); }
+  to   { transform: translateY(-2px); }
+}
+
 .hamster-front-legs {
   transform-origin: 63px 77px;
   animation: front-legs 0.3s ease-in-out infinite alternate;
@@ -150,13 +158,13 @@ body {
 }
 
 @keyframes front-legs {
-  from { transform: rotate(-24deg); }
-  to   { transform: rotate(24deg); }
+  from { transform: rotate(-28deg); }
+  to   { transform: rotate(28deg); }
 }
 
 @keyframes back-legs {
-  from { transform: rotate(24deg); }
-  to   { transform: rotate(-24deg); }
+  from { transform: rotate(28deg); }
+  to   { transform: rotate(-28deg); }
 }
 
 /* 내비게이션 */

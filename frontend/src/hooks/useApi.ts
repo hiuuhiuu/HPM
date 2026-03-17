@@ -9,9 +9,22 @@ export function notifyApiError(message: string): void {
   window.dispatchEvent(new CustomEvent('api-error', { detail: message }));
 }
 
+/** HTTP 오류 응답에서 상태코드 + 응답 내용을 포함한 Error를 생성 */
+async function toApiError(res: Response): Promise<Error> {
+  let detail = '';
+  try {
+    const body = await res.json();
+    detail = typeof body.detail === 'string' ? body.detail : JSON.stringify(body);
+  } catch {
+    detail = await res.text().catch(() => '');
+  }
+  const msg = detail ? `API 오류: ${res.status} - ${detail}` : `API 오류: ${res.status}`;
+  return new Error(msg);
+}
+
 export async function apiFetch<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`);
-  if (!res.ok) throw new Error(`API 오류: ${res.status}`);
+  if (!res.ok) throw await toApiError(res);
   return res.json();
 }
 
@@ -21,7 +34,7 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`API 오류: ${res.status}`);
+  if (!res.ok) throw await toApiError(res);
   return res.json();
 }
 
@@ -31,13 +44,13 @@ export async function apiPut<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`API 오류: ${res.status}`);
+  if (!res.ok) throw await toApiError(res);
   return res.json();
 }
 
 export async function apiDelete(path: string): Promise<void> {
   const res = await fetch(`${BASE_URL}${path}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error(`API 오류: ${res.status}`);
+  if (!res.ok) throw await toApiError(res);
 }
 
 export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
@@ -46,7 +59,7 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`API 오류: ${res.status}`);
+  if (!res.ok) throw await toApiError(res);
   return res.json();
 }
 
