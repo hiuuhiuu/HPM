@@ -90,10 +90,19 @@ export default function Traces() {
   const isSystemTrace = (item: TraceListItem) => {
     const n = item.root_name.toUpperCase();
     return (
+      // PostgreSQL 헬스체크
       n === 'SELECT 1' || n === 'SELECT 1;' ||
       n.startsWith('SELECT VERSION') ||
+      n.includes('PG_CATALOG') || n.includes('PG_IS_IN_RECOVERY') ||
+      // HTTP 헬스체크 엔드포인트
       n === '/HEALTH' || n === 'GET /HEALTH' || n === 'HEALTH' ||
-      n.includes('PG_CATALOG') || n.includes('PG_IS_IN_RECOVERY')
+      // MSSQL/Tomcat 커넥션풀 검증 쿼리
+      // 예: "SELECT covi_smart" — SELECT + 단순 식별자(공백 없음)
+      /^SELECT\s+\w+$/.test(n) ||
+      n.startsWith('SELECT TOP 1') ||
+      n === 'SELECT GETDATE()' || n === 'SELECT SYSDATE FROM DUAL' ||
+      // Oracle 커넥션 검증
+      n === 'SELECT 1 FROM DUAL'
     );
   };
 

@@ -50,11 +50,25 @@ function isHealthCheck(span: SpanDetail): boolean {
   const attrs = span.attributes as Record<string, unknown>;
   const stmt = String(attrs['db.statement'] || attrs['db.query.text'] || '').trim().toUpperCase();
   const name = span.name.trim().toUpperCase();
+
+  // HTTP 헬스체크 엔드포인트
+  if (name === '/HEALTH' || name === 'GET /HEALTH' || name === 'HEALTH') return true;
+
+  // PostgreSQL 헬스체크
   if (stmt === 'SELECT 1' || stmt === 'SELECT 1;') return true;
   if (stmt.startsWith('SELECT VERSION')) return true;
   if (stmt.includes('PG_IS_IN_RECOVERY') || stmt.includes('PG_CATALOG.')) return true;
   if (stmt.startsWith('SHOW ') && stmt.length < 30) return true;
-  if (name === '/HEALTH' || name === 'GET /HEALTH' || name === 'HEALTH') return true;
+
+  // MSSQL/Tomcat 커넥션풀 검증 쿼리
+  // span name이 "SELECT <단순식별자>" 패턴 (예: "SELECT covi_smart")
+  if (/^SELECT\s+\w+$/.test(name)) return true;
+  if (stmt.startsWith('SELECT TOP 1') && stmt.length < 40) return true;
+  if (stmt === 'SELECT GETDATE()') return true;
+
+  // Oracle 커넥션 검증
+  if (stmt === 'SELECT 1 FROM DUAL' || stmt === 'SELECT SYSDATE FROM DUAL') return true;
+
   return false;
 }
 
