@@ -53,6 +53,12 @@ java \
   # JVM 메트릭 활성화
   -Dotel.instrumentation.jvm-metrics.enabled=true \
   \
+  # 스케줄링 프레임워크 (기본 비활성화)
+  # Quartz/Spring @Scheduled 등은 정기 실행으로 트레이스 노이즈를 유발하므로 기본 OFF.
+  # 배치 Job 성능 이상 추적이 필요한 경우에만 true로 설정.
+  -Dotel.instrumentation.quartz.enabled=false \
+  -Dotel.instrumentation.spring-scheduling.enabled=false \
+  \
   -jar your-application.jar
 ```
 
@@ -101,16 +107,22 @@ JAVA_OPTS="$JAVA_OPTS -Dotel.logs.exporter=otlp"
 
 ## 5. 자동 계측 대상 (주요 프레임워크)
 
-| 프레임워크 / 라이브러리 | 계측 항목 |
-|------------------------|-----------|
-| Spring MVC / WebFlux   | HTTP 요청/응답, 응답시간 |
-| Spring Boot            | 애플리케이션 메트릭 |
-| JDBC                   | SQL 쿼리 추적 |
-| Hibernate              | ORM 쿼리 추적 |
-| Redis (Jedis/Lettuce)  | Redis 명령 추적 |
-| Kafka                  | 메시지 생산/소비 추적 |
-| gRPC                   | RPC 호출 추적 |
-| JVM                    | 메모리, CPU, GC, 스레드 |
+| 프레임워크 / 라이브러리 | 계측 항목 | 기본값 |
+|------------------------|-----------|--------|
+| Spring MVC / WebFlux   | HTTP 요청/응답, 응답시간 | **활성화** |
+| Spring Boot            | 애플리케이션 메트릭 | **활성화** |
+| JDBC                   | SQL 쿼리 추적 | **활성화** |
+| Hibernate              | ORM 쿼리 추적 | **활성화** |
+| Redis (Jedis/Lettuce)  | Redis 명령 추적 | **활성화** |
+| Kafka                  | 메시지 생산/소비 추적 | **활성화** |
+| gRPC                   | RPC 호출 추적 | **활성화** |
+| JVM                    | 메모리, CPU, GC, 스레드 | **활성화** |
+| Quartz Scheduler       | Job 실행 추적 | **비활성화** (노이즈 방지) |
+| Spring @Scheduled      | 메서드 실행 추적 | **비활성화** (노이즈 방지) |
+
+> **스케줄링 비활성화 이유**: 정기 실행 Job은 정상 수행 시 진단 가치가 낮고,
+> 빈번한 실행이 TPS 지표를 왜곡하며 불필요한 트레이스 볼륨을 유발합니다.
+> 배치 Job 성능 모니터링이 필요한 경우 `-Dotel.instrumentation.quartz.enabled=true` 로 활성화하세요.
 
 ---
 
