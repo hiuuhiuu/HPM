@@ -124,7 +124,7 @@ function HamsterLogo() {
 
   return (
     <div className="hamster-logo" onClick={() => navigate('/')} title="대시보드로 이동">
-      <svg viewBox="0 0 100 100" width="88" height="88">
+      <svg viewBox="0 0 100 100" width="52" height="52">
 
         {/* ── 쳇바퀴 (회전) ── */}
         <g className="hamster-wheel-spin">
@@ -204,7 +204,10 @@ function HamsterLogo() {
 
         </g>
       </svg>
-      <span className="hamster-label">Performance Monitor</span>
+      <div className="hamster-brand">
+        <span className="hamster-brand-name">Hamster APM</span>
+        <span className="hamster-label">Performance Monitor</span>
+      </div>
     </div>
   );
 }

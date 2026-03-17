@@ -103,27 +103,61 @@ body {
 }
 
 .hamster-logo {
-  padding: 18px 20px 14px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--border);
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 6px;
+  gap: 12px;
   cursor: pointer;
   transition: background 0.15s;
   user-select: none;
+  position: relative;
+  overflow: hidden;
+}
+
+.hamster-logo::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 20% 50%, rgba(99,102,241,0.08) 0%, transparent 70%);
+  pointer-events: none;
 }
 
 .hamster-logo:hover {
   background: var(--bg-hover);
 }
 
+.hamster-logo:hover::before {
+  background: radial-gradient(ellipse at 20% 50%, rgba(99,102,241,0.14) 0%, transparent 70%);
+}
+
+.hamster-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.hamster-brand-name {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  background: linear-gradient(135deg, #a5b4fc 0%, #6366f1 60%, #818cf8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1.2;
+}
+
 .hamster-label {
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-muted);
-  letter-spacing: 1px;
-  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 쳇바퀴 회전 */
