@@ -289,7 +289,7 @@ export default function TraceWaterfall({ trace }: Props) {
     if (minSpanMs <= 0) return null;
     const ids = new Set<string>();
     function mark(node: SpanNode): boolean {
-      const self = node.status === 'ERROR' || criticalPath.has(node.span_id) || node.duration_ms >= minSpanMs;
+      const self = node.status === 'ERROR' || node.duration_ms >= minSpanMs;
       const child = node.children.some(c => mark(c));
       if (self || child) ids.add(node.span_id);
       return self || child;
