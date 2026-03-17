@@ -103,16 +103,31 @@ public final class HamsterMethodsConfig {
         // 3. 기본 설치 경로
         candidates.add(new File("/waslib/hamster-methods.conf"));
 
+        // 탐색한 경로를 모두 출력 (적용 여부 진단용)
         for (File f : candidates) {
             if (f.exists() && f.canRead()) {
-                logger.info("[Hamster] Loading method config: " + f.getAbsolutePath());
+                String msg = "[Hamster] Loading method config: " + f.getAbsolutePath();
+                System.err.println(msg);
+                logger.warning(msg);
                 ParsedConfig result = parse(f);
                 if (result != null) {
+                    int exact    = result.exactEntries.size();
+                    int wildcard = result.wildcardRules.size();
+                    String summary = "[Hamster] Config loaded — exact=" + exact + ", wildcard=" + wildcard;
+                    System.err.println(summary);
+                    logger.warning(summary);
                     return result;
                 }
+            } else {
+                String miss = "[Hamster] Config candidate not found or unreadable: " + f.getAbsolutePath();
+                System.err.println(miss);
+                logger.warning(miss);
             }
         }
 
+        String none = "[Hamster] No method config file found. Hooking disabled.";
+        System.err.println(none);
+        logger.warning(none);
         return new ParsedConfig(Collections.<String>emptyList(), Collections.<WildcardRule>emptyList());
     }
 
