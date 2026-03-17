@@ -644,7 +644,7 @@ function AgentConfigManager({
                           }}
                         />
                         <span style={{ fontSize: 11, color: '#64748b' }}>
-                          {(draft ?? cfg.min_span_duration_ms) === 0 || (draft ?? String(cfg.min_span_duration_ms)) === '0'
+                          {Number(draft ?? cfg.min_span_duration_ms) === 0
                             ? '비활성'
                             : `${draft ?? cfg.min_span_duration_ms}ms 미만 제거`}
                         </span>
