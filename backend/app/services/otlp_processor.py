@@ -124,12 +124,12 @@ _SPAN_KIND_MAP = {
 def _normalize_span_name(name: str, attrs: Dict[str, Any]) -> str:
     """
     J2EE WAS(JEUS / Tomcat / WebLogic) + Spring Boot 공통 스팬 이름 정규화.
-    정적 리소스 요청을 '[정적 리소스]'로 통일한다.
 
     판별 우선순위:
-    1. http.target / url.path 확장자가 정적 파일 확장자인 경우
-    2. 스팬 이름(route 부분)이 WAS별 정적 리소스 wildcard 패턴인 경우
-    3. 스팬 이름이 WAS 정적 서블릿 클래스명인 경우
+    1. http.target / url.path 확장자가 정적 파일 확장자인 경우 → '[정적 리소스]'
+    2. 스팬 이름(route 부분)이 WAS별 정적 리소스 wildcard 패턴인 경우 → '[정적 리소스]'
+    3. 스팬 이름이 WAS 정적 서블릿 클래스명인 경우 → '[정적 리소스]'
+    4. 스팬 이름에 와일드카드(*)가 포함된 경우 → 실제 경로(http.target/url.path)로 대체
     """
     method = attrs.get("http.method") or attrs.get("http.request.method", "")
     target = attrs.get("http.target", "") or attrs.get("url.path", "")
@@ -155,6 +155,11 @@ def _normalize_span_name(name: str, attrs: Dict[str, Any]) -> str:
     # 3) 서블릿 클래스명 노출 (WebLogic FileServlet 등)
     if route in _STATIC_SPAN_EXACT or bare in _STATIC_SPAN_EXACT:
         return _static_name()
+
+    # 4) 와일드카드(*) 포함 route 템플릿 → 실제 경로로 대체
+    #    예: "POST /backbone/*" → "POST /rp/api/ctm/mbr/CTM1300U00/listMembInfo.ap"
+    if "*" in route and path:
+        return f"{method} {path}".strip() if method else path
 
     return name
 
