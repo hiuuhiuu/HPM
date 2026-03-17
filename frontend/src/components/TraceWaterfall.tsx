@@ -46,28 +46,76 @@ function buildTree(spans: SpanDetail[]): { roots: SpanNode[]; flat: SpanNode[]; 
 
 // ── 헬스체크/노이즈 스팬 감지 ──────────────────────────
 
+// DB 커넥션풀 헬스체크/검증 쿼리 판별
+// stmt: db.statement 또는 db.query.text (대문자, trim)
+// name: span name (대문자, trim)
+function isDbValidationQuery(stmt: string, name: string): boolean {
+  // ── 공통 ──────────────────────────────────────────────────
+  // span name이 "SELECT <단순식별자>" 패턴 (DBCP validationQuery 결과)
+  // 예: "SELECT covi_smart", "SELECT ORCL"
+  if (/^SELECT\s+\w+$/.test(name)) return true;
+
+  // ── PostgreSQL ─────────────────────────────────────────────
+  if (stmt === 'SELECT 1' || stmt === 'SELECT 1;') return true;
+  if (stmt.startsWith('SELECT VERSION(') || stmt.startsWith('SELECT VERSION ')) return true;
+  if (stmt.includes('PG_IS_IN_RECOVERY') || stmt.includes('PG_CATALOG.')) return true;
+  // MySQL/PostgreSQL SHOW 계열 (짧은 관리 쿼리)
+  if (stmt.startsWith('SHOW ') && stmt.length < 40) return true;
+
+  // ── MySQL / MariaDB ────────────────────────────────────────
+  if (stmt === '/* PING */' || stmt === 'SELECT 1 /* PING */') return true;
+  if (stmt === 'SELECT 1 + 1' || stmt === 'SELECT 1+1') return true;
+  // MySQL Connector/J가 보내는 검증 쿼리
+  if (stmt === '/* JDBC PING */ SELECT 1') return true;
+  // HikariCP MySQL 기본 검증
+  if (stmt === 'SELECT 1' || stmt === 'SELECT 1;') return true;
+
+  // ── MSSQL (SQL Server) ────────────────────────────────────
+  if (stmt.startsWith('SELECT TOP 1') && stmt.length < 50) return true;
+  if (stmt === 'SELECT GETDATE()' || stmt === 'SELECT GETDATE() AS NOW') return true;
+  if (stmt === 'SELECT @@VERSION' || stmt === 'SELECT @@SERVERNAME') return true;
+  if (stmt === 'SELECT 1' || stmt === 'SELECT 1;') return true;
+
+  // ── Oracle ────────────────────────────────────────────────
+  if (stmt === 'SELECT 1 FROM DUAL' || stmt === 'SELECT 1 FROM DUAL;') return true;
+  if (stmt === 'SELECT SYSDATE FROM DUAL' || stmt === 'SELECT SYSDATE FROM DUAL;') return true;
+  if (stmt === 'SELECT * FROM DUAL' || stmt === 'SELECT 0 FROM DUAL') return true;
+  if (stmt === 'SELECT 1 FROM SYS.DUAL') return true;
+  // Oracle JDBC ping
+  if (stmt.startsWith('BEGIN') && stmt.includes('NULL') && stmt.length < 30) return true;
+
+  // ── Tibero ────────────────────────────────────────────────
+  // Tibero는 Oracle 호환이나 고유 패턴 포함
+  if (stmt === 'SELECT 1 FROM DUAL' || stmt === 'SELECT SYSDATE FROM DUAL') return true;
+  if (stmt === 'SELECT * FROM V$VERSION' || stmt.startsWith('SELECT BANNER FROM V$VERSION')) return true;
+  // Tibero JDBC 기본 검증
+  if (stmt === 'SELECT CURRENT_TIMESTAMP FROM DUAL') return true;
+
+  // ── Altibase ──────────────────────────────────────────────
+  if (stmt === 'SELECT 1 FROM DUAL' || stmt === 'SELECT SYSDATE FROM DUAL') return true;
+  if (stmt === 'SELECT 1 FROM V$VERSION') return true;
+
+  // ── H2 / 임베디드 DB ──────────────────────────────────────
+  if (stmt === 'SELECT 1' || stmt === 'SELECT H2VERSION()') return true;
+
+  // ── WAS/DBCP 공통 짧은 검증 패턴 ─────────────────────────
+  // 매우 짧고 결과 없는 쿼리 (20자 이하 단순 SELECT)
+  if (stmt.length <= 20 && stmt.startsWith('SELECT') && !stmt.includes('FROM ')) return true;
+
+  return false;
+}
+
 function isHealthCheck(span: SpanDetail): boolean {
   const attrs = span.attributes as Record<string, unknown>;
   const stmt = String(attrs['db.statement'] || attrs['db.query.text'] || '').trim().toUpperCase();
   const name = span.name.trim().toUpperCase();
 
   // HTTP 헬스체크 엔드포인트
-  if (name === '/HEALTH' || name === 'GET /HEALTH' || name === 'HEALTH') return true;
+  if (name === '/HEALTH' || name === 'GET /HEALTH' || name === 'HEALTH' ||
+      name === 'GET /ACTUATOR/HEALTH' || name === '/ACTUATOR/HEALTH') return true;
 
-  // PostgreSQL 헬스체크
-  if (stmt === 'SELECT 1' || stmt === 'SELECT 1;') return true;
-  if (stmt.startsWith('SELECT VERSION')) return true;
-  if (stmt.includes('PG_IS_IN_RECOVERY') || stmt.includes('PG_CATALOG.')) return true;
-  if (stmt.startsWith('SHOW ') && stmt.length < 30) return true;
-
-  // MSSQL/Tomcat 커넥션풀 검증 쿼리
-  // span name이 "SELECT <단순식별자>" 패턴 (예: "SELECT covi_smart")
-  if (/^SELECT\s+\w+$/.test(name)) return true;
-  if (stmt.startsWith('SELECT TOP 1') && stmt.length < 40) return true;
-  if (stmt === 'SELECT GETDATE()') return true;
-
-  // Oracle 커넥션 검증
-  if (stmt === 'SELECT 1 FROM DUAL' || stmt === 'SELECT SYSDATE FROM DUAL') return true;
+  // DB 커넥션풀 검증 쿼리
+  if (isDbValidationQuery(stmt, name)) return true;
 
   return false;
 }

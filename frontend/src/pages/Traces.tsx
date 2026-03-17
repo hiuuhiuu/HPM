@@ -89,21 +89,30 @@ export default function Traces() {
   // 시스템/헬스체크 트레이스 필터
   const isSystemTrace = (item: TraceListItem) => {
     const n = item.root_name.toUpperCase();
-    return (
-      // PostgreSQL 헬스체크
-      n === 'SELECT 1' || n === 'SELECT 1;' ||
-      n.startsWith('SELECT VERSION') ||
-      n.includes('PG_CATALOG') || n.includes('PG_IS_IN_RECOVERY') ||
-      // HTTP 헬스체크 엔드포인트
-      n === '/HEALTH' || n === 'GET /HEALTH' || n === 'HEALTH' ||
-      // MSSQL/Tomcat 커넥션풀 검증 쿼리
-      // 예: "SELECT covi_smart" — SELECT + 단순 식별자(공백 없음)
-      /^SELECT\s+\w+$/.test(n) ||
-      n.startsWith('SELECT TOP 1') ||
-      n === 'SELECT GETDATE()' || n === 'SELECT SYSDATE FROM DUAL' ||
-      // Oracle 커넥션 검증
-      n === 'SELECT 1 FROM DUAL'
-    );
+    // HTTP 헬스체크
+    if (n === '/HEALTH' || n === 'GET /HEALTH' || n === 'HEALTH' ||
+        n === 'GET /ACTUATOR/HEALTH' || n === '/ACTUATOR/HEALTH') return true;
+    // SELECT <단순식별자> 패턴 — DBCP validationQuery (예: SELECT covi_smart)
+    if (/^SELECT\s+\w+$/.test(n)) return true;
+    // PostgreSQL
+    if (n === 'SELECT 1' || n === 'SELECT 1;') return true;
+    if (n.startsWith('SELECT VERSION')) return true;
+    if (n.includes('PG_CATALOG') || n.includes('PG_IS_IN_RECOVERY')) return true;
+    if (n.startsWith('SHOW ') && n.length < 40) return true;
+    // MSSQL
+    if (n.startsWith('SELECT TOP 1') && n.length < 50) return true;
+    if (n === 'SELECT GETDATE()' || n === 'SELECT @@VERSION' || n === 'SELECT @@SERVERNAME') return true;
+    // Oracle / Tibero / Altibase
+    if (n === 'SELECT 1 FROM DUAL' || n === 'SELECT SYSDATE FROM DUAL' ||
+        n === 'SELECT * FROM DUAL' || n === 'SELECT 0 FROM DUAL' ||
+        n === 'SELECT 1 FROM SYS.DUAL' || n === 'SELECT CURRENT_TIMESTAMP FROM DUAL') return true;
+    if (n === 'SELECT * FROM V$VERSION' || n.startsWith('SELECT BANNER FROM V$VERSION')) return true;
+    // MySQL / MariaDB
+    if (n === '/* PING */' || n === 'SELECT 1 + 1' || n === 'SELECT 1+1') return true;
+    if (n === '/* JDBC PING */ SELECT 1') return true;
+    // 공통: 20자 이하 FROM 없는 단순 SELECT
+    if (n.length <= 20 && n.startsWith('SELECT') && !n.includes('FROM ')) return true;
+    return false;
   };
 
   // 정적 리소스 필터
