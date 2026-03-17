@@ -88,9 +88,12 @@ public final class HamsterMethodsConfig {
         }
 
         // 2. 에이전트 JAR 동일 디렉토리
+        //    sun.java.command 는 main class + args 만 담으므로 JVM flags(-javaagent:) 가 없음.
+        //    RuntimeMXBean.getInputArguments() 를 통해 실제 JVM 옵션을 탐색한다.
         try {
-            String cmd = System.getProperty("sun.java.command", "");
-            for (String token : cmd.split("\\s+")) {
+            java.util.List<String> jvmArgs =
+                    java.lang.management.ManagementFactory.getRuntimeMXBean().getInputArguments();
+            for (String token : jvmArgs) {
                 if (token.startsWith("-javaagent:")) {
                     String jarPath = token.substring("-javaagent:".length()).split("=")[0];
                     File jarFile = new File(jarPath);
