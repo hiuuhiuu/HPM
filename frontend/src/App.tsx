@@ -145,61 +145,64 @@ function HamsterLogo() {
           <circle cx={WX} cy={WY} r="2.2" fill="#1a1d27" />
         </g>
 
-        {/* ── 골든 햄스터 (측면, 오른쪽이 앞, 쳇바퀴 안) ── */}
+        {/* ── 골든 햄스터 (측면, 오른쪽이 앞, 쳇바퀴 안) — 몸통 바운스 그룹 ── */}
+        <g className="hamster-body-group">
 
-        {/* 꼬리: 아주 짧은 뭉텅이 */}
-        <ellipse cx="32" cy="73" rx="3" ry="2" fill="#9a6200"
-          transform="rotate(-10 32 73)" />
+          {/* 꼬리: 아주 짧은 뭉텅이 */}
+          <ellipse cx="32" cy="73" rx="3" ry="2" fill="#9a6200"
+            transform="rotate(-10 32 73)" />
 
-        {/* 뒷다리 */}
-        <g className="hamster-back-legs">
-          <line x1="38" y1="77" x2="32" y2="85"
-            stroke="#7a4e00" strokeWidth="4.5" strokeLinecap="round" />
-          <line x1="38" y1="77" x2="44" y2="85"
-            stroke="#c8860a" strokeWidth="4" strokeLinecap="round" />
+          {/* 뒷다리 */}
+          <g className="hamster-back-legs">
+            <line x1="38" y1="77" x2="32" y2="86"
+              stroke="#7a4e00" strokeWidth="4.5" strokeLinecap="round" />
+            <line x1="38" y1="77" x2="44" y2="86"
+              stroke="#c8860a" strokeWidth="4" strokeLinecap="round" />
+          </g>
+
+          {/* 몸통 - 통통하고 둥근 골든햄스터 */}
+          <ellipse cx="50" cy="72" rx="19" ry="12" fill="#c8860a" />
+          {/* 배 - 크림색 */}
+          <ellipse cx="51" cy="73" rx="11" ry="8" fill="#fff3dc" />
+
+          {/* 앞다리 */}
+          <g className="hamster-front-legs">
+            <line x1="63" y1="77" x2="57" y2="86"
+              stroke="#7a4e00" strokeWidth="4.5" strokeLinecap="round" />
+            <line x1="63" y1="77" x2="69" y2="86"
+              stroke="#c8860a" strokeWidth="4" strokeLinecap="round" />
+          </g>
+
+          {/* 머리 */}
+          <circle cx="67" cy="62" r="12" fill="#c8860a" />
+
+          {/* 볼 주머니 - 골든햄스터 특징, 자연스러운 크기 */}
+          <ellipse cx="75" cy="66" rx="6.5" ry="5.5" fill="#fff3dc" />
+
+          {/* 귀: 작고 둥글게 세운 모양 */}
+          <ellipse cx="63" cy="51" rx="4" ry="5" fill="#c8860a" />
+          <ellipse cx="63" cy="51" rx="2.4" ry="3.2" fill="#f0a0a0" />
+
+          {/* 눈: 크고 검은, 반짝이는 */}
+          <circle cx="74" cy="59" r="3.2" fill="#1a0a00" />
+          <circle cx="75.2" cy="57.8" r="1.1" fill="white" />
+
+          {/* 코: 작은 분홍 */}
+          <ellipse cx="79" cy="64" rx="1.5" ry="1.1" fill="#cc7a8a" />
+
+          {/* 입 */}
+          <path d="M78 65.5 Q79.5 67 78 68"
+            fill="none" stroke="#a05060" strokeWidth="0.8" strokeLinecap="round" />
+
+          {/* 수염 */}
+          <line x1="78.5" y1="63.5" x2="85" y2="61.5"
+            stroke="#9a6200" strokeWidth="0.6" strokeLinecap="round" opacity="0.7" />
+          <line x1="78.5" y1="65" x2="85" y2="65"
+            stroke="#9a6200" strokeWidth="0.6" strokeLinecap="round" opacity="0.7" />
+          <line x1="78.5" y1="66.5" x2="85" y2="68"
+            stroke="#9a6200" strokeWidth="0.6" strokeLinecap="round" opacity="0.7" />
+
         </g>
-
-        {/* 몸통 - 통통하고 둥근 골든햄스터 */}
-        <ellipse cx="50" cy="72" rx="19" ry="12" fill="#c8860a" />
-        {/* 배 - 크림색 */}
-        <ellipse cx="51" cy="73" rx="11" ry="8" fill="#fff3dc" />
-
-        {/* 앞다리 */}
-        <g className="hamster-front-legs">
-          <line x1="63" y1="77" x2="57" y2="85"
-            stroke="#7a4e00" strokeWidth="4.5" strokeLinecap="round" />
-          <line x1="63" y1="77" x2="69" y2="85"
-            stroke="#c8860a" strokeWidth="4" strokeLinecap="round" />
-        </g>
-
-        {/* 머리 */}
-        <circle cx="67" cy="62" r="12" fill="#c8860a" />
-
-        {/* 볼 주머니 - 골든햄스터 핵심 특징! 크림색, 크게 */}
-        <ellipse cx="76" cy="66" rx="8" ry="6.5" fill="#fff3dc" />
-
-        {/* 귀: 작고 둥글게 세운 모양 */}
-        <ellipse cx="63" cy="51" rx="4" ry="5" fill="#c8860a" />
-        <ellipse cx="63" cy="51" rx="2.4" ry="3.2" fill="#f0a0a0" />
-
-        {/* 눈: 크고 검은, 반짝이는 */}
-        <circle cx="74" cy="59" r="3.2" fill="#1a0a00" />
-        <circle cx="75.2" cy="57.8" r="1.1" fill="white" />
-
-        {/* 코: 작은 분홍 */}
-        <ellipse cx="79" cy="64" rx="1.5" ry="1.1" fill="#cc7a8a" />
-
-        {/* 입 */}
-        <path d="M78 65.5 Q80 67.5 78.5 68.5"
-          fill="none" stroke="#a05060" strokeWidth="0.8" strokeLinecap="round" />
-
-        {/* 수염 */}
-        <line x1="78.5" y1="63.5" x2="85" y2="61.5"
-          stroke="#9a6200" strokeWidth="0.5" strokeLinecap="round" opacity="0.6" />
-        <line x1="78.5" y1="65" x2="85" y2="65"
-          stroke="#9a6200" strokeWidth="0.5" strokeLinecap="round" opacity="0.6" />
-        <line x1="78.5" y1="66.5" x2="85" y2="68"
-          stroke="#9a6200" strokeWidth="0.5" strokeLinecap="round" opacity="0.6" />
       </svg>
       <span className="hamster-label">Performance Monitor</span>
     </div>
