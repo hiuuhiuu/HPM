@@ -105,19 +105,19 @@ async def get_error_stats(
         cond += " AND service = :service"
         params["service"] = service
 
-    # 총 건수 / 미해결 건수
+    # 총 발생 횟수 / 미해결 횟수 (count 컬럼 합산)
     r = await db.execute(text(f"""
         SELECT
-            COUNT(*)                              AS total,
-            COUNT(*) FILTER (WHERE NOT resolved)  AS unresolved,
-            COUNT(*) FILTER (WHERE resolved)      AS resolved_cnt
+            SUM(COALESCE(count, 1))                              AS total,
+            SUM(COALESCE(count, 1)) FILTER (WHERE NOT resolved)  AS unresolved,
+            SUM(COALESCE(count, 1)) FILTER (WHERE resolved)      AS resolved_cnt
         FROM errors WHERE {cond}
     """), params)
     counts = r.mappings().one()
 
-    # 유형별 Top 10
+    # 유형별 Top 10 (실제 발생 횟수 기준)
     r = await db.execute(text(f"""
-        SELECT error_type, COUNT(*) AS cnt
+        SELECT error_type, SUM(COALESCE(count, 1)) AS cnt
         FROM errors WHERE {cond}
         GROUP BY error_type
         ORDER BY cnt DESC
@@ -125,9 +125,9 @@ async def get_error_stats(
     """), params)
     by_type = [{"error_type": row["error_type"], "count": row["cnt"]} for row in r.mappings()]
 
-    # 시간대별 발생 추이
+    # 시간대별 발생 추이 (실제 발생 횟수 기준)
     r = await db.execute(text(f"""
-        SELECT time_bucket(INTERVAL '{step}', time) AS bucket, COUNT(*) AS cnt
+        SELECT time_bucket(INTERVAL '{step}', time) AS bucket, SUM(COALESCE(count, 1)) AS cnt
         FROM errors WHERE {cond}
         GROUP BY bucket ORDER BY bucket ASC
     """), params)

@@ -36,12 +36,12 @@ async def ensure_indexes() -> None:
     """기존 설치 환경에서 누락될 수 있는 인덱스를 안전하게 추가"""
     try:
         async with AsyncSessionLocal() as session:
-            await session.execute(text("""
-                CREATE INDEX IF NOT EXISTS idx_traces_start_service
-                    ON traces(start_time DESC, service);
-                CREATE INDEX IF NOT EXISTS idx_metrics_time_service
-                    ON metrics(time DESC, service);
-            """))
+            await session.execute(text(
+                "CREATE INDEX IF NOT EXISTS idx_traces_start_service ON traces(start_time DESC, service);"
+            ))
+            await session.execute(text(
+                "CREATE INDEX IF NOT EXISTS idx_metrics_time_service ON metrics(time DESC, service);"
+            ))
             await session.commit()
         logger.info("[DB] 인덱스 확인 완료")
     except Exception as e:
@@ -58,11 +58,13 @@ async def ensure_errors_migration() -> None:
     """
     try:
         async with AsyncSessionLocal() as session:
-            # 1. 컬럼 추가
-            await session.execute(text("""
-                ALTER TABLE errors ADD COLUMN IF NOT EXISTS count INTEGER DEFAULT 1;
-                ALTER TABLE errors ADD COLUMN IF NOT EXISTS first_seen TIMESTAMPTZ;
-            """))
+            # 1. 컬럼 추가 (각각 별도 execute — asyncpg 다중 명령 불가)
+            await session.execute(text(
+                "ALTER TABLE errors ADD COLUMN IF NOT EXISTS count INTEGER DEFAULT 1;"
+            ))
+            await session.execute(text(
+                "ALTER TABLE errors ADD COLUMN IF NOT EXISTS first_seen TIMESTAMPTZ;"
+            ))
             await session.execute(text(
                 "UPDATE errors SET first_seen = time WHERE first_seen IS NULL;"
             ))
