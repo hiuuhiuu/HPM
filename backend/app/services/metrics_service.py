@@ -4,14 +4,7 @@
 from typing import Any, Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-
-# 조회 범위 → (DB interval 문자열, time_bucket step)
-RANGE_CONFIG: Dict[str, Dict[str, str]] = {
-    "1h":  {"interval": "1 hour",   "step": "1 minute"},
-    "6h":  {"interval": "6 hours",  "step": "5 minutes"},
-    "24h": {"interval": "24 hours", "step": "15 minutes"},
-    "7d":  {"interval": "7 days",   "step": "1 hour"},
-}
+from app.core.constants import RANGE_CONFIG, WAS_THREAD_ACTIVE
 
 # ── JVM 공통 메트릭 (JEUS / Tomcat / WebLogic 모두 동일) ──────────────────
 CPU_METRICS    = ["jvm.cpu.usage", "process.cpu.usage", "jvm.process.cpu.usage"]
@@ -28,11 +21,7 @@ MEMORY_POOL_USED = ["jvm.memory.used", "jvm.memory.heap.used"] # attributes filt
 # JEUS     : jeus.threadpool.active / jeus.threadpool.max
 # Tomcat   : tomcat.threads.busy / tomcat.threads.current
 # WebLogic : weblogic.threadpool.execute_thread_total_count
-WAS_THREAD_ACTIVE = [
-    "jeus.threadpool.active",
-    "tomcat.threads.busy",
-    "weblogic.threadpool.execute_thread_total_count",
-]
+# WAS_THREAD_ACTIVE: app.core.constants 에서 임포트
 WAS_THREAD_TOTAL = [
     "jeus.threadpool.max",
     "tomcat.threads.current",

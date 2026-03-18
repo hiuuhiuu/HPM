@@ -4,14 +4,7 @@
 from typing import Any, Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-
-RANGE_INTERVAL = {
-    "15m": "15 minutes",
-    "1h":  "1 hour",
-    "6h":  "6 hours",
-    "24h": "24 hours",
-    "7d":  "7 days",
-}
+from app.core.constants import RANGE_INTERVAL
 
 
 async def get_trace_list(

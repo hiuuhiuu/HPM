@@ -4,24 +4,7 @@
 from typing import Any, Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-
-RANGE_INTERVAL = {
-    "10m": "10 minutes",
-    "1h": "1 hour", "6h": "6 hours", "24h": "24 hours", "7d": "7 days",
-}
-RANGE_STEP = {
-    "1h": "1 minute", "6h": "5 minutes", "24h": "15 minutes", "7d": "1 hour",
-}
-RANGE_STEP_SECONDS = {
-    "10m": 60, "1h": 60, "6h": 300, "24h": 900, "7d": 3600,
-}
-
-WAS_THREAD_ACTIVE = [
-    "was.threadpool.active",
-    "jeus.threadpool.active",
-    "tomcat.threads.busy",
-    "weblogic.threadpool.execute_thread_total_count"
-]
+from app.core.constants import RANGE_INTERVAL, RANGE_STEP, RANGE_STEP_SECONDS, WAS_THREAD_ACTIVE
 
 
 async def get_request_rate(
