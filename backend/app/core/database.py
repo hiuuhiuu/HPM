@@ -34,14 +34,18 @@ async def get_db():
 
 async def ensure_indexes() -> None:
     """기존 설치 환경에서 누락될 수 있는 인덱스를 안전하게 추가"""
+    indexes = [
+        # 메트릭·트레이스 기본 시계열 조회
+        "CREATE INDEX IF NOT EXISTS idx_traces_start_service ON traces(start_time DESC, service);",
+        "CREATE INDEX IF NOT EXISTS idx_metrics_time_service  ON metrics(time DESC, service);",
+        # 토폴로지 self-join: child.parent_span_id = parent.span_id ON trace_id
+        "CREATE INDEX IF NOT EXISTS idx_traces_trace_span       ON traces(trace_id, span_id);",
+        "CREATE INDEX IF NOT EXISTS idx_traces_trace_parent_span ON traces(trace_id, parent_span_id);",
+    ]
     try:
         async with AsyncSessionLocal() as session:
-            await session.execute(text(
-                "CREATE INDEX IF NOT EXISTS idx_traces_start_service ON traces(start_time DESC, service);"
-            ))
-            await session.execute(text(
-                "CREATE INDEX IF NOT EXISTS idx_metrics_time_service ON metrics(time DESC, service);"
-            ))
+            for ddl in indexes:
+                await session.execute(text(ddl))
             await session.commit()
         logger.info("[DB] 인덱스 확인 완료")
     except Exception as e:
