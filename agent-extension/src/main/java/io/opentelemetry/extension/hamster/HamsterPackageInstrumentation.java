@@ -41,8 +41,16 @@ public class HamsterPackageInstrumentation implements TypeInstrumentation {
         }
 
         if (rule.recursive) {
-            // com.bank.** → 패키지 접두사로 시작하는 모든 클래스
-            return ElementMatchers.nameStartsWith(rule.pattern);
+            // com.bank.** → 패키지 접두사로 시작하는 모든 클래스 (하위 패키지 포함)
+            // 또한 ClassName.** 형태로 쓴 경우 내부클래스(ClassName$Inner)도 포함:
+            //   rule.pattern = "com.bank.service.OrderService." 일 때
+            //   → named("com.bank.service.OrderService")       (외부 클래스 자체)
+            //   → nameStartsWith("com.bank.service.OrderService$")  (내부 클래스)
+            //   → nameStartsWith("com.bank.service.OrderService.")  (하위 패키지/중첩 패키지)
+            String base = rule.pattern.substring(0, rule.pattern.length() - 1); // 끝 점 제거
+            return ElementMatchers.nameStartsWith(rule.pattern)
+                    .or(ElementMatchers.named(base))
+                    .or(ElementMatchers.nameStartsWith(base + "$"));
         }
 
         // com.bank.service.* → 직계 자식 클래스만 (하위 패키지 제외)
