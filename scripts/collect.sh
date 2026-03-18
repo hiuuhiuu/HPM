@@ -92,7 +92,7 @@ docker pull timescale/timescaledb:latest-pg15
 success "timescale/timescaledb:latest-pg15"
 
 # ── Step 3. 이미지 저장 + 구성 파일 수집 ─────────────────
-step "Step 3/5: 이미지 저장 및 구성 파일 수집"
+step "Step 3/5: 이미지 저장, 구성 파일 수집 및 에이전트 빌드"
 
 info "이미지 저장 중... (크기에 따라 수분 소요)"
 docker save \
@@ -117,9 +117,10 @@ BUILD_DATE=$(date '+%Y-%m-%d %H:%M:%S')
 BUILD_HOST=$(hostname)
 EOF
 
-info "에이전트 확장(JAR) 빌드 중..."
-bash "${PROJECT_DIR}/agent-extension/build-extension.sh" || error "에이전트 확장 빌드 실패"
-cp "${PROJECT_DIR}/agent-extension/dist/hamster-agent-extension.jar" "${WORK_DIR}/agent/"
+info "통합 햄스터 에이전트(Single JAR) 빌드 중... (OTel agent + Hamster 확장 포함, 수분 소요)"
+bash "${PROJECT_DIR}/agent-extension/build-extension.sh" || error "에이전트 빌드 실패"
+cp "${PROJECT_DIR}/agent-extension/dist/${HAMSTER_AGENT}" "${WORK_DIR}/agent/" \
+  || error "agent-extension/dist/${HAMSTER_AGENT} 가 없습니다. 빌드 로그를 확인하세요."
 
 info "실시간 스택 분석 에이전트 수집 중..."
 cp "${SCRIPT_DIR}/thread-dump-agent.sh" "${WORK_DIR}/scripts/"
@@ -157,55 +158,11 @@ else
   fi
 fi
 
-step "Step 5/5: 통합 햄스터 에이전트(Single JAR) 생성"
+step "Step 5/5: 통합 에이전트 확인"
 
-info "opentelemetry-javaagent-${OTEL_AGENT_VERSION}.jar 다운로드 중..."
-curl -# -L "${OTEL_AGENT_URL}" -o "${WORK_DIR}/agent/opentelemetry-javaagent.jar"
-
-info "통합 에이전트 구성 중..."
-# 1. 원본을 hamster-agent.jar로 복사
-cp "${WORK_DIR}/agent/opentelemetry-javaagent.jar" "${WORK_DIR}/agent/${HAMSTER_AGENT}"
-
-# 2. Hamster 확장 기능(클래스 및 SPI)을 원본 JAR에 병합
-EXT_JAR="${PROJECT_DIR}/agent-extension/dist/hamster-agent-extension.jar"
-EXT_TMP="${PROJECT_DIR}/.collect_tmp/ext_extract"
-mkdir -p "${EXT_TMP}"
-unzip -q "${EXT_JAR}" -d "${EXT_TMP}"
-
-# OTel 에이전트의 MANIFEST.MF(Premain-Class 등 필수 속성 포함)가 덮어씌워지지 않도록 제거
-rm -f "${EXT_TMP}/META-INF/MANIFEST.MF"
-
-# ── SPI 파일 병합 ─────────────────────────────────────────────────────────────
-# jar uf는 동일 경로의 파일을 덮어쓰므로,
-# META-INF/services/ 파일은 에이전트 원본 내용 + 확장 내용을 concat한 뒤 삽입한다.
-SPI_DIR="${EXT_TMP}/META-INF/services"
-if [ -d "${SPI_DIR}" ]; then
-  for ext_spi in "${SPI_DIR}/"*; do
-    [ -f "${ext_spi}" ] || continue
-    spi_rel="META-INF/services/$(basename "${ext_spi}")"
-
-    # 에이전트 JAR에 동일 SPI 파일이 존재하면 내용을 추출하여 앞에 붙인다
-    if unzip -l "${WORK_DIR}/agent/${HAMSTER_AGENT}" "${spi_rel}" &>/dev/null 2>&1; then
-      agent_content="$(unzip -p "${WORK_DIR}/agent/${HAMSTER_AGENT}" "${spi_rel}" 2>/dev/null || true)"
-      ext_content="$(cat "${ext_spi}")"
-      # 중복 항목을 제거하고 병합 (에이전트 원본 → 확장 순)
-      printf '%s\n%s\n' "${agent_content}" "${ext_content}" \
-        | grep -v '^[[:space:]]*$' | awk '!seen[$0]++' > "${ext_spi}"
-    fi
-  done
-fi
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Hamster 클래스 및 병합된 SPI 파일을 에이전트 JAR에 삽입
-cd "${EXT_TMP}"
-jar uf "${WORK_DIR}/agent/${HAMSTER_AGENT}" .
-
-# 3. 정리
-rm -rf "${EXT_TMP}"
-rm -f "${WORK_DIR}/agent/opentelemetry-javaagent.jar"
-rm -f "${WORK_DIR}/agent/hamster-agent-extension.jar"
-
-success "통합 에이전트 생성 완료: ${HAMSTER_AGENT} ($(du -sh "${WORK_DIR}/agent/${HAMSTER_AGENT}" | cut -f1))"
+# Maven shade (pom.xml) 가 OTel agent + Hamster 클래스 + SPI 를 이미 병합했으므로
+# 별도 다운로드·수동 병합 불필요. Step 3 에서 복사한 파일을 그대로 사용한다.
+success "통합 에이전트 확인 완료: ${HAMSTER_AGENT} ($(du -sh "${WORK_DIR}/agent/${HAMSTER_AGENT}" | cut -f1))"
 
 # ── 최종 패키지 생성 ─────────────────────────────────────
 echo ""

@@ -5,8 +5,8 @@
 echo "Building Hamster APM Agent (all-in-one)..."
 cd "$(dirname "$0")"
 
-# Build the docker image
-docker build -t hamster-agent-builder .
+# Build the docker image (소스 변경이 항상 반영되도록 --no-cache 사용)
+docker build --no-cache -t hamster-agent-builder .
 
 # Run the container and mount current directory to get the JAR
 mkdir -p dist
