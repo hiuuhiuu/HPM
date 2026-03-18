@@ -63,12 +63,18 @@ public class HamsterExtensionCustomizer implements AutoConfigurationCustomizerPr
             logger.warning(msg);
         }
 
-        // 와일드카드 규칙 수 로그 출력 (ByteBuddy 모듈이 처리)
-        int wildcardCount = HamsterMethodsConfig.get().wildcardRules.size();
-        if (wildcardCount > 0) {
-            String msg = "[Hamster] Wildcard rules registered for ByteBuddy: " + wildcardCount;
-            System.err.println(msg);
-            logger.warning(msg);
+        // 와일드카드 규칙 목록 로그 (ByteBuddy 모듈이 처리, 클래스 로드 시 후킹)
+        List<HamsterMethodsConfig.WildcardRule> wildcardRules = HamsterMethodsConfig.get().wildcardRules;
+        if (!wildcardRules.isEmpty()) {
+            String header = "[Hamster] Wildcard rules registered for ByteBuddy: " + wildcardRules.size();
+            System.err.println(header);
+            logger.warning(header);
+            for (HamsterMethodsConfig.WildcardRule r : wildcardRules) {
+                String kind = r.classLevel ? "class[*]" : (r.recursive ? ".**" : ".*");
+                String detail = "[Hamster]   " + kind + " -> " + r.pattern;
+                System.err.println(detail);
+                logger.warning(detail);
+            }
         }
 
         return extraProps;

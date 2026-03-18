@@ -16,6 +16,10 @@ import net.bytebuddy.asm.Advice;
  */
 public final class MethodTracingAdvice {
 
+    // Advice 가 실제로 실행되는지 확인하기 위한 1회성 플래그
+    // (ByteBuddy 가 이 클래스를 각 ClassLoader 에 주입하므로 ClassLoader 당 1회 출력)
+    private static volatile boolean firstSpanLogged = false;
+
     private MethodTracingAdvice() {}
 
     @Advice.OnMethodEnter(suppress = Throwable.class)
@@ -25,7 +29,14 @@ public final class MethodTracingAdvice {
             @Advice.Local("hamsterSpan")  Span  span,
             @Advice.Local("hamsterScope") Scope scope) {
 
-        // 패키지 제거 → 가독성 높은 스팬 이름 (예: OrderService.processOrder)
+        // 첫 번째 실제 호출 시 1회만 로그 — Advice 가 작동 중임을 확인
+        if (!firstSpanLogged) {
+            firstSpanLogged = true;
+            System.err.println("[Hamster] Advice executing — first traced call: "
+                    + className + "." + methodName);
+        }
+
+        // 패키지·외부클래스 부분 제거 → 가독성 높은 스팬 이름 (예: OrderService$Inner.handle)
         String simpleName = className;
         int dot = className.lastIndexOf('.');
         if (dot >= 0) {
