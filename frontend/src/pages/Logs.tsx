@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
+import PageHeader from '../components/PageHeader';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip,
@@ -68,33 +69,33 @@ export default function Logs() {
 
   return (
     <div>
-      {/* 헤더 + 필터 */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h2 className="page-title" style={{ marginBottom: 0 }}>로그</h2>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <select value={service} onChange={e => { setService(e.target.value); setPage(1); }} style={selStyle}>
-            <option value="">전체 서비스</option>
-            {services?.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
-          </select>
-          {/* 검색 */}
-          <input
-            type="text"
-            placeholder="메시지 검색..."
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1); }}
-            style={{ ...selStyle, width: 180 }}
-          />
-          {/* 시간 범위 */}
-          <div style={{ display: 'flex', gap: 4 }}>
-            {RANGES.map(r => (
-              <button key={r} onClick={() => { setRange(r); setPage(1); }}
-                style={{ ...btnStyle, background: range === r ? '#6366f1' : '#252840', color: range === r ? '#fff' : '#94a3b8' }}>
-                {r}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        title="로그"
+        actions={
+          <>
+            <select value={service} onChange={e => { setService(e.target.value); setPage(1); }} className="select">
+              <option value="">전체 서비스</option>
+              {services?.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+            </select>
+            <input
+              type="text"
+              placeholder="메시지 검색..."
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
+              className="input"
+              style={{ width: 180 }}
+            />
+            <div className="tab-group">
+              {RANGES.map(r => (
+                <button key={r} onClick={() => { setRange(r); setPage(1); }}
+                  className={`tab-btn${range === r ? ' active' : ''}`}>
+                  {r}
+                </button>
+              ))}
+            </div>
+          </>
+        }
+      />
 
       {/* 레벨 필터 + 카운트 */}
       {stats && (

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { usePolling, apiFetch } from '../hooks/useApi';
 import { Service } from '../types';
+import PageHeader from '../components/PageHeader';
 
 type Range = '15m' | '1h' | '6h' | '24h' | '7d';
 const RANGES: Range[] = ['15m', '1h', '6h', '24h', '7d'];
@@ -33,36 +34,26 @@ export default function SlowQueries() {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <h2 className="page-title" style={{ marginBottom: 0 }}>SQL 슬로우 쿼리</h2>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <select value={service} onChange={e => setService(e.target.value)} style={selStyle}>
-            <option value="">전체 서비스</option>
-            {services?.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
-          </select>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {RANGES.map(r => (
-              <button key={r} onClick={() => setRange(r)}
-                style={{ ...btnStyle, background: range === r ? '#6366f1' : '#252840', color: range === r ? '#fff' : '#94a3b8' }}>
-                {r}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* 설명 카드 */}
-      <div style={{
-        background: '#1a1d27', border: '1px solid #2d3148', borderRadius: 8,
-        padding: '10px 16px', marginBottom: 16, fontSize: 12, color: '#64748b',
-        display: 'flex', alignItems: 'center', gap: 8,
-      }}>
-        <span style={{ color: '#6366f1', fontSize: 16 }}>ⓘ</span>
-        <span>
-          <code style={{ color: '#93c5fd', background: '#1e2035', padding: '1px 5px', borderRadius: 3 }}>db.statement</code> 속성이 있는 스팬을 집계합니다.
-          평균 응답시간 내림차순 정렬, 상위 {rows?.length ?? 0}건 표시.
-        </span>
-      </div>
+      <PageHeader
+        title="SQL 슬로우 쿼리"
+        subtitle="db.statement 속성이 있는 스팬을 평균 응답시간 내림차순으로 집계합니다."
+        actions={
+          <>
+            <select value={service} onChange={e => setService(e.target.value)} className="select">
+              <option value="">전체 서비스</option>
+              {services?.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+            </select>
+            <div className="tab-group">
+              {RANGES.map(r => (
+                <button key={r} onClick={() => setRange(r)}
+                  className={`tab-btn${range === r ? ' active' : ''}`}>
+                  {r}
+                </button>
+              ))}
+            </div>
+          </>
+        }
+      />
 
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>

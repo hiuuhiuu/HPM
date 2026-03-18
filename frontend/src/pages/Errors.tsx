@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { usePolling, apiFetch, apiPatch } from '../hooks/useApi';
 import { Service, ErrorList, ErrorItem, ErrorStats } from '../types';
 import { format, parseISO } from 'date-fns';
+import PageHeader from '../components/PageHeader';
 import { useGlobalTime } from '../contexts/GlobalTimeContext';
 
 type Range    = '1h' | '6h' | '24h' | '7d';
@@ -66,32 +67,33 @@ export default function Errors() {
 
   return (
     <div>
-      {/* 헤더 + 필터 */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <h2 className="page-title" style={{ marginBottom: 0 }}>에러 추적</h2>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <select value={service} onChange={e => { setService(e.target.value); setPage(1); }} style={selStyle}>
-            <option value="">전체 서비스</option>
-            {services?.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
-          </select>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {RESOLVED_OPTS.map(o => (
-              <button key={o.key} onClick={() => { setResolved(o.key); setPage(1); }}
-                style={{ ...btnStyle, background: resolved === o.key ? resolvedColor(o.key) : '#252840', color: resolved === o.key ? '#fff' : '#94a3b8' }}>
-                {o.label}
-              </button>
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {RANGES.map(r => (
-              <button key={r} onClick={() => { setRange(r); setPage(1); }}
-                style={{ ...btnStyle, background: range === r ? '#6366f1' : '#252840', color: range === r ? '#fff' : '#94a3b8' }}>
-                {r}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        title="에러 추적"
+        actions={
+          <>
+            <select value={service} onChange={e => { setService(e.target.value); setPage(1); }} className="select">
+              <option value="">전체 서비스</option>
+              {services?.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+            </select>
+            <div className="tab-group">
+              {RESOLVED_OPTS.map(o => (
+                <button key={o.key} onClick={() => { setResolved(o.key); setPage(1); }}
+                  className={`tab-btn${resolved === o.key ? ' active' : ''}`}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+            <div className="tab-group">
+              {RANGES.map(r => (
+                <button key={r} onClick={() => { setRange(r); setPage(1); }}
+                  className={`tab-btn${range === r ? ' active' : ''}`}>
+                  {r}
+                </button>
+              ))}
+            </div>
+          </>
+        }
+      />
 
       {/* 통계 카드 */}
       {stats && (

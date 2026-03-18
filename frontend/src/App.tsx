@@ -41,41 +41,93 @@ function App() {
         <nav className="sidebar">
           <HamsterLogo />
           <ul className="nav-links">
+            {/* ─ 대시보드 ─ */}
+            <div className="nav-section-label">대시보드</div>
             <li>
-              <NavLink to="/" end>대시보드</NavLink>
+              <NavLink to="/" end>
+                <NavIcon d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                대시보드
+              </NavLink>
             </li>
             <li>
-              <NavLink to="/custom-dashboard">커스텀 대시보드</NavLink>
+              <NavLink to="/custom-dashboard">
+                <NavIcon d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+                커스텀 대시보드
+              </NavLink>
+            </li>
+
+            {/* ─ 관측 ─ */}
+            <div className="nav-divider" />
+            <div className="nav-section-label">관측</div>
+            <li>
+              <NavLink to="/metrics">
+                <NavIcon d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                메트릭
+              </NavLink>
             </li>
             <li>
-              <NavLink to="/metrics">메트릭</NavLink>
+              <NavLink to="/traces">
+                <NavIcon d="M13 10V3L4 14h7v7l9-11h-7z" />
+                트레이싱
+              </NavLink>
             </li>
             <li>
-              <NavLink to="/traces">트레이싱</NavLink>
+              <NavLink to="/logs">
+                <NavIcon d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                로그
+              </NavLink>
             </li>
+
+            {/* ─ 분석 ─ */}
+            <div className="nav-divider" />
+            <div className="nav-section-label">분석</div>
             <li>
               <NavLink to="/errors">
+                <NavIcon d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 에러 추적
                 {unresolved > 0 && <Badge count={unresolved} color="#ef4444" />}
               </NavLink>
             </li>
             <li>
-              <NavLink to="/logs">로그</NavLink>
-            </li>
-            <li>
               <NavLink to="/alerts">
+                <NavIcon d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                 알림
                 {activeAlerts > 0 && <Badge count={activeAlerts} color="#f59e0b" />}
               </NavLink>
             </li>
-            <li><NavLink to="/topology">토폴로지</NavLink></li>
-            <li><NavLink to="/statistics">통계</NavLink></li>
-            <li><NavLink to="/thread-dumps">스레드 덤프</NavLink></li>
-            <li><NavLink to="/slow-queries">SQL 슬로우 쿼리</NavLink></li>
+            <li>
+              <NavLink to="/statistics">
+                <NavIcon d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+                통계
+              </NavLink>
+            </li>
+            <li>
+              <NavLink to="/topology">
+                <NavIcon d="M4 6a2 2 0 114 0 2 2 0 01-4 0zm12 0a2 2 0 114 0 2 2 0 01-4 0zM4 18a2 2 0 114 0 2 2 0 01-4 0zm12 0a2 2 0 114 0 2 2 0 01-4 0zM8 6h8M8 18h8M6 8v8M18 8v8" />
+                토폴로지
+              </NavLink>
+            </li>
+
+            {/* ─ 인프라 ─ */}
+            <div className="nav-divider" />
+            <div className="nav-section-label">인프라</div>
+            <li>
+              <NavLink to="/thread-dumps">
+                <NavIcon d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+                스레드 덤프
+              </NavLink>
+            </li>
+            <li>
+              <NavLink to="/slow-queries">
+                <NavIcon d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                SQL 슬로우 쿼리
+              </NavLink>
+            </li>
           </ul>
           <div className="settings-nav">
             <NavLink to="/settings" className="settings-link">
-              설정(Settings)
+              <NavIcon d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              설정
             </NavLink>
           </div>
           <SidebarFooter />
@@ -209,6 +261,16 @@ function HamsterLogo() {
       </svg>
       <span className="hamster-label">Performance Monitor</span>
     </div>
+  );
+}
+
+function NavIcon({ d }: { d: string }) {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+      style={{ flexShrink: 0, opacity: 0.75 }}>
+      <path d={d} />
+    </svg>
   );
 }
 

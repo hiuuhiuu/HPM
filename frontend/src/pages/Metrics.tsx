@@ -6,6 +6,7 @@ import StatCard, { AnomalyInfo } from '../components/StatCard';
 import MetricChart, { BaselineData } from '../components/MetricChart';
 import { useGlobalTime } from '../contexts/GlobalTimeContext';
 import { useMetricsStream } from '../hooks/useWebSocket';
+import PageHeader from '../components/PageHeader';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, Legend
 } from 'recharts';
@@ -195,55 +196,39 @@ export default function Metrics() {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <h2 className="page-title" style={{ marginBottom: 0 }}>메트릭</h2>
-          {wsConnected ? (
-            <span style={{
-              fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
-              background: '#052e16', color: '#4ade80', border: '1px solid #166534',
-              display: 'flex', alignItems: 'center', gap: 4,
-            }}>
-              <span style={{
-                width: 6, height: 6, borderRadius: '50%', background: '#4ade80',
-                animation: 'pulse 2s infinite',
-              }} />
-              LIVE
-            </span>
-          ) : (
-            <span style={{ fontSize: 11, color: '#475569' }}>연결 중...</span>
-          )}
-        </div>
-        <div style={{ display: 'flex', gap: 12 }}>
-          {/* 서비스 선택 */}
-          <select
-            value={selectedService}
-            onChange={e => handleServiceChange(e.target.value)}
-            style={selectStyle}
-          >
-            {!services?.length && <option value="">서비스 없음</option>}
-            {services?.map(s => (
-              <option key={s.name} value={s.name}>{s.name}</option>
-            ))}
-          </select>
-          {/* 시간 범위 */}
-          <div style={{ display: 'flex', gap: 4 }}>
-            {RANGES.map(r => (
-              <button
-                key={r}
-                onClick={() => setRange(r)}
-                style={{
-                  ...btnStyle,
-                  background: range === r ? '#6366f1' : '#252840',
-                  color:      range === r ? '#fff'    : '#94a3b8',
-                }}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        title="메트릭"
+        actions={
+          <>
+            {wsConnected ? (
+              <span className="badge badge-ok" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span className="live-dot" />
+                LIVE
+              </span>
+            ) : (
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>연결 중...</span>
+            )}
+            <select
+              value={selectedService}
+              onChange={e => handleServiceChange(e.target.value)}
+              className="select"
+            >
+              {!services?.length && <option value="">서비스 없음</option>}
+              {services?.map(s => (
+                <option key={s.name} value={s.name}>{s.name}</option>
+              ))}
+            </select>
+            <div className="tab-group">
+              {RANGES.map(r => (
+                <button key={r} onClick={() => setRange(r)}
+                  className={`tab-btn${range === r ? ' active' : ''}`}>
+                  {r}
+                </button>
+              ))}
+            </div>
+          </>
+        }
+      />
 
       {!selectedService ? (
         <div className="card">

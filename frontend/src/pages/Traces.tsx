@@ -10,6 +10,7 @@ import { Service, TraceList, TraceListItem, TraceDetail, TraceStats } from '../t
 import TraceWaterfall from '../components/TraceWaterfall';
 import { format, parseISO } from 'date-fns';
 import { useGlobalTime } from '../contexts/GlobalTimeContext';
+import PageHeader from '../components/PageHeader';
 import { useLocation } from 'react-router-dom';
 
 type Range     = '15m' | '1h' | '6h' | '24h' | '7d';
@@ -135,85 +136,60 @@ export default function Traces() {
 
   return (
     <div>
-      {/* 헤더 + 필터 */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <h2 className="page-title" style={{ marginBottom: 0 }}>분산 트레이싱</h2>
-          {/* 뷰 모드 토글 */}
-          <div style={{ display: 'flex', background: '#1a1d27', border: '1px solid #2d3148', borderRadius: 7, padding: 2 }}>
-            {(['table', 'scatter'] as ViewMode[]).map(m => (
-              <button key={m} onClick={() => setViewMode(m)} style={{
-                border: 'none', borderRadius: 5, padding: '4px 12px', fontSize: 12,
-                cursor: 'pointer', transition: 'all 0.15s',
-                background: viewMode === m ? '#6366f1' : 'transparent',
-                color:      viewMode === m ? '#fff'    : '#64748b',
-              }}>
-                {m === 'table' ? '≡ 테이블' : '⬡ 산점도'}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <select value={service} onChange={e => { setService(e.target.value); setPage(1); }} style={selStyle}>
-            <option value="">전체 서비스</option>
-            {services?.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
-          </select>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {STATUS_OPTS.map(s => (
-              <button key={s} onClick={() => { setStatus(s); setPage(1); }}
-                style={{ ...btnStyle, background: status === s ? statusColor(s) : '#252840', color: status === s ? '#fff' : '#94a3b8' }}>
-                {s}
-              </button>
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {RANGES.map(r => (
-              <button key={r} onClick={() => { setRange(r); setPage(1); }}
-                style={{ ...btnStyle, background: range === r ? '#6366f1' : '#252840', color: range === r ? '#fff' : '#94a3b8' }}>
-                {r}
-              </button>
-            ))}
-          </div>
-          {/* 시스템 트레이스 필터 */}
-          <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, color: '#94a3b8', userSelect: 'none', paddingLeft: 4 }}>
-            <input
-              type="checkbox"
-              checked={hideSystemTraces}
-              onChange={e => setHideSystemTraces(e.target.checked)}
-              style={{ accentColor: '#6366f1', cursor: 'pointer' }}
-            />
-            시스템 쿼리 제외
-            {systemCount > 0 && (
-              <span style={{ fontSize: 11, color: '#475569', background: '#1e2035', borderRadius: 10, padding: '0 6px' }}>
-                {systemCount}
-              </span>
-            )}
-          </label>
-          {/* 정적 리소스 필터 */}
-          <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, color: '#94a3b8', userSelect: 'none' }}>
-            <input
-              type="checkbox"
-              checked={hideStaticResources}
-              onChange={e => setHideStaticResources(e.target.checked)}
-              style={{ accentColor: '#6366f1', cursor: 'pointer' }}
-            />
-            정적 리소스 제외
-            {staticCount > 0 && (
-              <span style={{ fontSize: 11, color: '#475569', background: '#1e2035', borderRadius: 10, padding: '0 6px' }}>
-                {staticCount}
-              </span>
-            )}
-          </label>
-          {/* 트랜잭션 최소 표시 시간 — 설정값 표시 전용 */}
-          {minTraceDurationMs > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#475569', userSelect: 'none' }}>
-              <span style={{ background: '#1e2035', border: '1px solid #2d3148', borderRadius: 4, padding: '2px 8px' }}>
+      <PageHeader
+        title="분산 트레이싱"
+        actions={
+          <>
+            <div className="tab-group">
+              {(['table', 'scatter'] as ViewMode[]).map(m => (
+                <button key={m} onClick={() => setViewMode(m)}
+                  className={`tab-btn${viewMode === m ? ' active' : ''}`}>
+                  {m === 'table' ? '≡ 테이블' : '⬡ 산점도'}
+                </button>
+              ))}
+            </div>
+            <select value={service} onChange={e => { setService(e.target.value); setPage(1); }} className="select">
+              <option value="">전체 서비스</option>
+              {services?.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+            </select>
+            <div className="tab-group">
+              {STATUS_OPTS.map(s => (
+                <button key={s} onClick={() => { setStatus(s); setPage(1); }}
+                  className={`tab-btn${status === s ? ' active' : ''}`}>
+                  {s}
+                </button>
+              ))}
+            </div>
+            <div className="tab-group">
+              {RANGES.map(r => (
+                <button key={r} onClick={() => { setRange(r); setPage(1); }}
+                  className={`tab-btn${range === r ? ' active' : ''}`}>
+                  {r}
+                </button>
+              ))}
+            </div>
+          </>
+        }
+        controls={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)', userSelect: 'none' }}>
+              <input type="checkbox" checked={hideSystemTraces} onChange={e => setHideSystemTraces(e.target.checked)} style={{ accentColor: '#6366f1', cursor: 'pointer' }} />
+              시스템 쿼리 제외
+              {systemCount > 0 && <span className="badge" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', fontSize: 10 }}>{systemCount}</span>}
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)', userSelect: 'none' }}>
+              <input type="checkbox" checked={hideStaticResources} onChange={e => setHideStaticResources(e.target.checked)} style={{ accentColor: '#6366f1', cursor: 'pointer' }} />
+              정적 리소스 제외
+              {staticCount > 0 && <span className="badge" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', fontSize: 10 }}>{staticCount}</span>}
+            </label>
+            {minTraceDurationMs > 0 && (
+              <span className="badge" style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
                 {minTraceDurationMs}ms 미만 제외
               </span>
-            </div>
-          )}
-        </div>
-      </div>
+            )}
+          </div>
+        }
+      />
 
       {/* 통계 카드 (서비스 선택 시) */}
       {stats && (
