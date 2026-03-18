@@ -190,18 +190,18 @@ async def get_active_events(db: AsyncSession) -> List[Dict]:
 # ─────────────────────────────────────────────
 
 async def check_all_rules(db: AsyncSession) -> int:
-    """모든 활성 규칙을 평가하고 알림 발화/해결 처리. 발화 건수 반환."""
+    """모든 활성 규칙을 평가하고 알림 발화/해결 처리. 상태 변경 건수 반환."""
     r = await db.execute(text("SELECT * FROM alert_rules WHERE enabled = true"))
     rules = r.mappings().all()
 
-    fired = 0
+    changed = 0
     for rule in rules:
         try:
-            fired += await _evaluate_rule(db, dict(rule))
+            changed += await _evaluate_rule(db, dict(rule))
         except Exception as e:
             logger.warning(f"[AlertChecker] 규칙 평가 실패 (id={rule['id']}): {e}")
 
-    return fired
+    return changed
 
 
 async def _evaluate_rule(db: AsyncSession, rule: Dict) -> int:
@@ -260,6 +260,7 @@ async def _evaluate_rule(db: AsyncSession, rule: Dict) -> int:
         """), {"eid": active_event_id})
         await db.commit()
         logger.info(f"[AlertChecker] 알림 해결: rule_id={rule['id']}")
+        return 1
 
     return 0
 

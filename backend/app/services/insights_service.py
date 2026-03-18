@@ -2,22 +2,25 @@
 룰 기반 자동 인사이트 분석 서비스
 LLM 없이 APM 데이터를 분석하여 주목해야 할 이슈를 도출합니다.
 """
+import asyncio
 from typing import Any, Dict, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 
 async def get_insights(db: AsyncSession) -> List[Dict[str, Any]]:
-    insights: List[Dict[str, Any]] = []
+    results = await asyncio.gather(
+        _check_down_services(db),
+        _check_high_error_rate(db),
+        _check_slow_endpoints(db),
+        _check_error_spike(db),
+        _check_active_alerts(db),
+        _check_log_span_mismatch(db),
+        _check_jvm_memory(db),
+        _check_stale_errors(db),
+    )
 
-    await _check_down_services(db, insights)
-    await _check_high_error_rate(db, insights)
-    await _check_slow_endpoints(db, insights)
-    await _check_error_spike(db, insights)
-    await _check_active_alerts(db, insights)
-    await _check_log_span_mismatch(db, insights)
-    await _check_jvm_memory(db, insights)
-    await _check_stale_errors(db, insights)
+    insights: List[Dict[str, Any]] = [item for group in results for item in group]
 
     # 심각도 순 정렬: critical → warning → info
     order = {"critical": 0, "warning": 1, "info": 2}
@@ -30,7 +33,7 @@ async def get_insights(db: AsyncSession) -> List[Dict[str, Any]]:
 # 룰 1: 서비스 다운 감지
 # ─────────────────────────────────────────────────────────
 
-async def _check_down_services(db: AsyncSession, out: list):
+async def _check_down_services(db: AsyncSession) -> List[Dict[str, Any]]:
     r = await db.execute(text("""
         SELECT name,
                EXTRACT(EPOCH FROM (NOW() - last_seen)) / 60 AS minutes_ago
@@ -39,6 +42,7 @@ async def _check_down_services(db: AsyncSession, out: list):
         ORDER BY last_seen DESC
     """))
     rows = r.mappings().all()
+    out = []
     for row in rows:
         mins = int(row["minutes_ago"] or 0)
         out.append({
@@ -49,13 +53,14 @@ async def _check_down_services(db: AsyncSession, out: list):
             "service":     row["name"],
             "link":        f"/metrics?service={row['name']}",
         })
+    return out
 
 
 # ─────────────────────────────────────────────────────────
 # 룰 2: 서비스별 에러율 임계값 초과 (최근 10분)
 # ─────────────────────────────────────────────────────────
 
-async def _check_high_error_rate(db: AsyncSession, out: list):
+async def _check_high_error_rate(db: AsyncSession) -> List[Dict[str, Any]]:
     r = await db.execute(text("""
         SELECT
             service,
@@ -73,6 +78,7 @@ async def _check_high_error_rate(db: AsyncSession, out: list):
         ORDER BY error_rate DESC
     """))
     rows = r.mappings().all()
+    out = []
     for row in rows:
         rate = float(row["error_rate"] or 0)
         if rate < 1.0:
@@ -89,13 +95,14 @@ async def _check_high_error_rate(db: AsyncSession, out: list):
             "service":     row["service"],
             "link":        f"/errors?service={row['service']}",
         })
+    return out
 
 
 # ─────────────────────────────────────────────────────────
 # 룰 3: 느린 엔드포인트 감지 (최근 10분, p95 > 1000ms)
 # ─────────────────────────────────────────────────────────
 
-async def _check_slow_endpoints(db: AsyncSession, out: list):
+async def _check_slow_endpoints(db: AsyncSession) -> List[Dict[str, Any]]:
     r = await db.execute(text("""
         SELECT
             service,
@@ -115,6 +122,7 @@ async def _check_slow_endpoints(db: AsyncSession, out: list):
         LIMIT 5
     """))
     rows = r.mappings().all()
+    out = []
     for row in rows:
         p95 = int(row["p95_ms"] or 0)
         avg = int(row["avg_ms"] or 0)
@@ -130,13 +138,14 @@ async def _check_slow_endpoints(db: AsyncSession, out: list):
             "service":     row["service"],
             "link":        f"/traces?service={row['service']}",
         })
+    return out
 
 
 # ─────────────────────────────────────────────────────────
 # 룰 4: 에러 급증 감지 (이전 5분 대비 최근 5분 에러 수 2배 이상)
 # ─────────────────────────────────────────────────────────
 
-async def _check_error_spike(db: AsyncSession, out: list):
+async def _check_error_spike(db: AsyncSession) -> List[Dict[str, Any]]:
     r = await db.execute(text("""
         SELECT
             service,
@@ -153,6 +162,7 @@ async def _check_error_spike(db: AsyncSession, out: list):
         HAVING COUNT(*) FILTER (WHERE start_time > NOW() - INTERVAL '5 minutes') >= 3
     """))
     rows = r.mappings().all()
+    out = []
     for row in rows:
         recent = int(row["recent_errors"] or 0)
         prev   = int(row["prev_errors"] or 0)
@@ -170,13 +180,14 @@ async def _check_error_spike(db: AsyncSession, out: list):
             "service":     row["service"],
             "link":        f"/errors?service={row['service']}",
         })
+    return out
 
 
 # ─────────────────────────────────────────────────────────
 # 룰 5: 현재 발화 중인 알림
 # ─────────────────────────────────────────────────────────
 
-async def _check_active_alerts(db: AsyncSession, out: list):
+async def _check_active_alerts(db: AsyncSession) -> List[Dict[str, Any]]:
     r = await db.execute(text("""
         SELECT
             ae.id,
@@ -194,22 +205,24 @@ async def _check_active_alerts(db: AsyncSession, out: list):
         LIMIT 5
     """))
     rows = r.mappings().all()
-    for row in rows:
-        out.append({
+    return [
+        {
             "level":       row["severity"],
             "category":    "alert",
             "title":       f"알림 발화: {row['rule_name']}",
             "description": row["message"],
             "service":     row["service"],
             "link":        "/alerts",
-        })
+        }
+        for row in rows
+    ]
 
 
 # ─────────────────────────────────────────────────────────
 # 룰 6: 로그-스팬 불일치 감지 (에러 로그는 많은데 에러 스팬이 없는 경우)
 # ─────────────────────────────────────────────────────────
 
-async def _check_log_span_mismatch(db: AsyncSession, out: list):
+async def _check_log_span_mismatch(db: AsyncSession) -> List[Dict[str, Any]]:
     """
     계측(Instrumentation) 누락 감지:
     최근 1시간 동안 ERROR 로그는 발생했으나, 관련 트레이스의 스팬 status가 ERROR가 아닌 경우
@@ -223,7 +236,7 @@ async def _check_log_span_mismatch(db: AsyncSession, out: list):
               AND trace_id IS NOT NULL
         ),
         mismatched AS (
-            SELECT 
+            SELECT
                 l.service,
                 COUNT(DISTINCT l.trace_id) AS mismatch_count
             FROM error_logs l
@@ -235,8 +248,8 @@ async def _check_log_span_mismatch(db: AsyncSession, out: list):
         SELECT * FROM mismatched
     """))
     rows = r.mappings().all()
-    for row in rows:
-        out.append({
+    return [
+        {
             "level":       "warning",
             "category":    "observability",
             "title":       f"{row['service']} 계측 누락 의심",
@@ -247,14 +260,17 @@ async def _check_log_span_mismatch(db: AsyncSession, out: list):
             ),
             "service":     row["service"],
             "link":        f"/logs?service={row['service']}&level=ERROR",
-        })
+        }
+        for row in rows
+    ]
 
 
 # ─────────────────────────────────────────────────────────
 # 룰 7: 장기 미해결 에러 (1시간 이상 미처리)
 # ─────────────────────────────────────────────────────────
 
-async def _check_stale_errors(db: AsyncSession, out: list):
+async def _check_stale_errors(db: AsyncSession) -> List[Dict[str, Any]]:
+    from datetime import datetime, timezone
     r = await db.execute(text("""
         SELECT
             service,
@@ -268,12 +284,11 @@ async def _check_stale_errors(db: AsyncSession, out: list):
         LIMIT 5
     """))
     rows = r.mappings().all()
+    out = []
     for row in rows:
-        from datetime import timezone
         oldest = row["oldest"]
         if oldest.tzinfo is None:
             oldest = oldest.replace(tzinfo=timezone.utc)
-        from datetime import datetime
         hours = int((datetime.now(timezone.utc) - oldest).total_seconds() / 3600)
         out.append({
             "level":       "info",
@@ -283,13 +298,14 @@ async def _check_stale_errors(db: AsyncSession, out: list):
             "service":     row["service"],
             "link":        f"/errors?service={row['service']}&resolved=false",
         })
+    return out
 
 
 # ─────────────────────────────────────────────────────────
 # 룰 8: JVM 메모리 부족 및 누수 의심
 # ─────────────────────────────────────────────────────────
 
-async def _check_jvm_memory(db: AsyncSession, out: list):
+async def _check_jvm_memory(db: AsyncSession) -> List[Dict[str, Any]]:
     """
     1. 힙 메모리 점유율이 85%를 초과하는 경우
     2. (추후 고도화) Old Gen이 지속적으로 우상향하는 경우
@@ -316,7 +332,7 @@ async def _check_jvm_memory(db: AsyncSession, out: list):
               AND time > NOW() - INTERVAL '5 minutes'
             ORDER BY service, instance, time DESC
         )
-        SELECT 
+        SELECT
             l.service,
             l.instance,
             ROUND(CAST(SUM(l.used_bytes) AS numeric) / 1024 / 1024, 0) AS used_mb,
@@ -328,6 +344,7 @@ async def _check_jvm_memory(db: AsyncSession, out: list):
         HAVING (SUM(used_bytes) * 100.0 / NULLIF(MAX(max_bytes), 0)) > 85
     """))
     rows = r.mappings().all()
+    out = []
     for row in rows:
         pct = float(row["usage_pct"] or 0)
         level = "critical" if pct >= 95 else "warning"
@@ -342,3 +359,4 @@ async def _check_jvm_memory(db: AsyncSession, out: list):
             "service":     row["service"],
             "link":        f"/metrics?service={row['service']}",
         })
+    return out

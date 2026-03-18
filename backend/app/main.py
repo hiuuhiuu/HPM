@@ -65,10 +65,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+_cors_origins = settings.allowed_origins if settings.allowed_origins else ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 운영 환경에서는 특정 도메인으로 제한
-    allow_credentials=True,
+    allow_origins=_cors_origins,
+    allow_credentials=bool(settings.allowed_origins),  # wildcard + credentials 조합 금지
     allow_methods=["*"],
     allow_headers=["*"],
 )
