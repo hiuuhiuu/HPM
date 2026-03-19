@@ -13,6 +13,13 @@ function buildWsUrl(path: string): string {
   return `${protocol}//${window.location.host}${path}`;
 }
 
+// ── 지수 백오프 헬퍼 ───────────────────────────────────────
+// 재시도 횟수에 따라 대기시간을 늘려 404 반복 로그 스팸을 방지한다.
+// 0회: 3s, 1회: 6s, 2회: 12s, ... 최대 300s(5분)
+function backoffDelay(retryCount: number, base = 3000, max = 300_000): number {
+  return Math.min(base * Math.pow(2, retryCount), max);
+}
+
 interface DashboardStats {
   unresolved: number;
   activeAlerts: number;
@@ -25,6 +32,7 @@ export function useDashboardWebSocket(url: string = '/ws/dashboard'): DashboardS
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const retryCountRef = useRef<number>(0);
 
   const connect = useCallback(() => {
     const fullUrl = buildWsUrl(url);
@@ -36,6 +44,7 @@ export function useDashboardWebSocket(url: string = '/ws/dashboard'): DashboardS
 
     ws.onopen = () => {
       console.log('[WebSocket] Connected to Dashboard');
+      retryCountRef.current = 0;   // 연결 성공 시 재시도 카운터 리셋
       setIsConnected(true);
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
@@ -46,14 +55,9 @@ export function useDashboardWebSocket(url: string = '/ws/dashboard'): DashboardS
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        
         if (data.type === 'init' || data.type === 'update') {
-          if (data.unresolved !== undefined) {
-            setUnresolved(data.unresolved);
-          }
-          if (data.active_alerts !== undefined) {
-            setActiveAlerts(data.active_alerts);
-          }
+          if (data.unresolved !== undefined) setUnresolved(data.unresolved);
+          if (data.active_alerts !== undefined) setActiveAlerts(data.active_alerts);
         }
       } catch (e) {
         console.error('[WebSocket] Error parsing message:', e);
@@ -61,29 +65,25 @@ export function useDashboardWebSocket(url: string = '/ws/dashboard'): DashboardS
     };
 
     ws.onclose = () => {
-      console.log('[WebSocket] Disconnected from Dashboard');
       setIsConnected(false);
       wsRef.current = null;
-      // Reconnect after 3 seconds
-      reconnectTimeoutRef.current = setTimeout(connect, 3000);
+      const delay = backoffDelay(retryCountRef.current);
+      console.warn(`[WebSocket] Dashboard disconnected. Reconnecting in ${delay / 1000}s (retry #${retryCountRef.current + 1})`);
+      retryCountRef.current += 1;
+      reconnectTimeoutRef.current = setTimeout(connect, delay);
     };
 
     ws.onerror = (error) => {
-      console.error('[WebSocket] Error:', error);
-      ws.close(); // Force close to trigger reconnect
+      console.error('[WebSocket] Dashboard error:', error);
+      ws.close();
     };
   }, [url]);
 
   useEffect(() => {
     connect();
-
     return () => {
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+      if (wsRef.current) wsRef.current.close();
     };
   }, [connect]);
 
@@ -114,6 +114,7 @@ export function useMetricsStream(): { snapshot: MetricsSnapshot | null; isConnec
   const [isConnected, setIsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectRef = useRef<NodeJS.Timeout | null>(null);
+  const retryCountRef = useRef<number>(0);
 
   const connect = useCallback(() => {
     const fullUrl = buildWsUrl('/ws/metrics');
@@ -123,6 +124,7 @@ export function useMetricsStream(): { snapshot: MetricsSnapshot | null; isConnec
     wsRef.current = ws;
 
     ws.onopen = () => {
+      retryCountRef.current = 0;   // 연결 성공 시 재시도 카운터 리셋
       setIsConnected(true);
       if (reconnectRef.current) { clearTimeout(reconnectRef.current); reconnectRef.current = null; }
     };
@@ -139,7 +141,10 @@ export function useMetricsStream(): { snapshot: MetricsSnapshot | null; isConnec
     ws.onclose = () => {
       setIsConnected(false);
       wsRef.current = null;
-      reconnectRef.current = setTimeout(connect, 5000);
+      const delay = backoffDelay(retryCountRef.current);
+      console.warn(`[WebSocket] /ws/metrics disconnected. Reconnecting in ${delay / 1000}s (retry #${retryCountRef.current + 1})`);
+      retryCountRef.current += 1;
+      reconnectRef.current = setTimeout(connect, delay);
     };
 
     ws.onerror = () => ws.close();
