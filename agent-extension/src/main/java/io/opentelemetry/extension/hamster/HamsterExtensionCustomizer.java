@@ -4,7 +4,7 @@ import io.opentelemetry.sdk.autoconfigure.spi.AutoConfigurationCustomizer;
 import io.opentelemetry.sdk.autoconfigure.spi.AutoConfigurationCustomizerProvider;
 import io.opentelemetry.sdk.autoconfigure.spi.ConfigProperties;
 
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
@@ -12,8 +12,7 @@ import java.util.logging.Logger;
 /**
  * OTel AutoConfiguration 훅.
  * - 스레드 덤프 폴러 시작
- * - hamster-methods.conf 의 정확한 메서드 항목을 otel.instrumentation.methods.include 에 등록
- *   (와일드카드 규칙은 HamsterInstrumentationModule / ByteBuddy 가 처리)
+ * - 설정된 후킹 규칙 로그 출력 (모든 규칙은 HamsterInstrumentationModule / ByteBuddy 가 처리)
  */
 public class HamsterExtensionCustomizer implements AutoConfigurationCustomizerProvider {
 
@@ -48,36 +47,30 @@ public class HamsterExtensionCustomizer implements AutoConfigurationCustomizerPr
         // ── 3. 스레드 덤프 폴러 시작 ─────────────────────────────────────────
         new HamsterThreadDumpExtension(backendUrl, instanceId).start();
 
-        // ── 4. 정확한 메서드 항목만 otel.instrumentation.methods.include 에 등록 ──
-        Map<String, String> extraProps = new HashMap<>();
-        List<String> exactEntries = HamsterMethodsConfig.get().exactEntries;
-        if (!exactEntries.isEmpty()) {
-            String methodsInclude = join(exactEntries, ";");
-            String existing = config.getString("otel.instrumentation.methods.include");
-            if (existing != null && !existing.isEmpty()) {
-                methodsInclude = existing + ";" + methodsInclude;
-            }
-            extraProps.put("otel.instrumentation.methods.include", methodsInclude);
-            String msg = "[Hamster] Exact method tracing: " + methodsInclude;
-            System.err.println(msg);
-            logger.warning(msg);
-        }
-
-        // 와일드카드 규칙 목록 로그 (ByteBuddy 모듈이 처리, 클래스 로드 시 후킹)
-        List<HamsterMethodsConfig.WildcardRule> wildcardRules = HamsterMethodsConfig.get().wildcardRules;
-        if (!wildcardRules.isEmpty()) {
-            String header = "[Hamster] Wildcard rules registered for ByteBuddy: " + wildcardRules.size();
+        // ── 4. 설정된 후킹 규칙 로그 출력 (ByteBuddy 가 클래스 로드 시 처리) ──
+        List<HamsterMethodsConfig.WildcardRule> rules = HamsterMethodsConfig.get().wildcardRules;
+        if (!rules.isEmpty()) {
+            String header = "[Hamster] ByteBuddy rules: " + rules.size();
             System.err.println(header);
             logger.warning(header);
-            for (HamsterMethodsConfig.WildcardRule r : wildcardRules) {
-                String kind = r.classLevel ? "class[*]" : (r.recursive ? ".**" : ".*");
+            for (HamsterMethodsConfig.WildcardRule r : rules) {
+                String kind;
+                if (r.classLevel) {
+                    kind = r.methods == null ? "class[*]" : "class" + r.methods;
+                } else {
+                    kind = r.recursive ? ".**" : ".*";
+                }
                 String detail = "[Hamster]   " + kind + " -> " + r.pattern;
                 System.err.println(detail);
                 logger.warning(detail);
             }
+        } else {
+            String none = "[Hamster] No hooking rules configured.";
+            System.err.println(none);
+            logger.warning(none);
         }
 
-        return extraProps;
+        return Collections.emptyMap();
     }
 
     private static String extractInstanceId(String attributes, String serviceName) {
@@ -93,14 +86,5 @@ public class HamsterExtensionCustomizer implements AutoConfigurationCustomizerPr
         } catch (Exception e) {
             return serviceName + "-unknown-host";
         }
-    }
-
-    private static String join(List<String> list, String sep) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < list.size(); i++) {
-            if (i > 0) sb.append(sep);
-            sb.append(list.get(i));
-        }
-        return sb.toString();
     }
 }
