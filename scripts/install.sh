@@ -6,6 +6,15 @@
 # ============================================================
 set -euo pipefail
 
+# ── 옵션 파싱 ────────────────────────────────────────────
+AGENT_ONLY=false
+for arg in "$@"; do
+  case "$arg" in
+    --agent-only) AGENT_ONLY=true ;;
+    *) ;;
+  esac
+done
+
 # ── 색상 출력 헬퍼 ───────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 info()    { echo -e "${CYAN}[INFO]${NC}  $*"; }
@@ -38,11 +47,41 @@ echo ""
 echo "============================================================"
 echo -e "  ${BOLD}APM 서버 설치 스크립트${NC}"
 [ -f "${SCRIPT_DIR}/VERSION" ] && source "${SCRIPT_DIR}/VERSION" && echo "  버전: ${APM_VERSION:-1.0}  |  빌드일: ${BUILD_DATE:-미상}"
+if $AGENT_ONLY; then echo "  모드: --agent-only (에이전트 JAR만 반입)"; fi
 echo "============================================================"
 echo ""
 
 # root 또는 sudo 확인
 [ "$(id -u)" -eq 0 ] || error "root 또는 sudo 권한으로 실행하세요: sudo ./install.sh"
+
+# ── agent-only 모드 ───────────────────────────────────────
+if $AGENT_ONLY; then
+  HAMSTER_JAR="${SCRIPT_DIR}/agent/hamster-agent.jar"
+  [ -f "${HAMSTER_JAR}" ] || error "hamster-agent.jar 파일이 없습니다: ${HAMSTER_JAR}"
+
+  mkdir -p "${AGENT_DIR}"
+
+  cp "${HAMSTER_JAR}" "${AGENT_DIR}/"
+  chmod 644 "${AGENT_DIR}/hamster-agent.jar"
+  AGENT_SIZE=$(du -sh "${AGENT_DIR}/hamster-agent.jar" | cut -f1)
+  success "Hamster 에이전트 반입 완료: ${AGENT_DIR}/hamster-agent.jar (${AGENT_SIZE})"
+
+  # 메서드 후킹 설정 파일 배포 (이미 존재하면 덮어쓰지 않음)
+  METHODS_CONF="${SCRIPT_DIR}/agent/hamster-methods.conf"
+  METHODS_SAMPLE="${SCRIPT_DIR}/agent/hamster-methods.conf.sample"
+  if [ -f "${METHODS_CONF}" ] && [ ! -f "${AGENT_DIR}/hamster-methods.conf" ]; then
+    cp "${METHODS_CONF}" "${AGENT_DIR}/hamster-methods.conf"
+    chmod 644 "${AGENT_DIR}/hamster-methods.conf"
+    success "메서드 후킹 설정 배포: ${AGENT_DIR}/hamster-methods.conf"
+  elif [ -f "${METHODS_SAMPLE}" ] && [ ! -f "${AGENT_DIR}/hamster-methods.conf" ]; then
+    cp "${METHODS_SAMPLE}" "${AGENT_DIR}/hamster-methods.conf.sample"
+    info "메서드 후킹 설정 샘플 배포: ${AGENT_DIR}/hamster-methods.conf.sample"
+  fi
+
+  echo ""
+  success "완료! 변경 사항 반영을 위해 WAS를 재시작하세요."
+  exit 0
+fi
 
 # Docker 확인
 command -v docker &>/dev/null || error "Docker가 설치되어 있지 않습니다. Docker를 먼저 설치 후 재실행하세요."
