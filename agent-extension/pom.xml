@@ -16,19 +16,22 @@
         <otel.agent.version>2.11.0-alpha</otel.agent.version>
         <!-- 런타임 agent JAR 버전 (stable) — extension API alpha 와 동일 minor -->
         <otel.agent.runtime.version>2.11.0</otel.agent.runtime.version>
-        <finalName>hamster-agent</finalName>
+        <finalName>hamster-extension</finalName>
     </properties>
 
     <dependencies>
         <!--
-          OTel Java Agent JAR — compile scope 로 shade 에 포함시켜 올인원 JAR 생성.
-          다른 OTel 의존성은 agent JAR 에 이미 포함되어 있으므로 provided 유지.
+          OTel Java Agent JAR — provided scope: 컴파일 시에는 참조하지 않으므로 불필요.
+          Extension-only JAR 방식: 빌드 시 agent JAR을 shade에 포함하지 않음.
+          배포 시 opentelemetry-javaagent.jar 와 hamster-extension.jar 를 함께 사용:
+            -javaagent:/waslib/opentelemetry-javaagent.jar
+            -Dotel.javaagent.extensions=/waslib/hamster-extension.jar
         -->
         <dependency>
             <groupId>io.opentelemetry.javaagent</groupId>
             <artifactId>opentelemetry-javaagent</artifactId>
             <version>${otel.agent.runtime.version}</version>
-            <scope>compile</scope>
+            <scope>provided</scope>
         </dependency>
 
         <!-- OTel SDK autoconfigure SPI (AutoConfigurationCustomizerProvider) -->
@@ -77,24 +80,11 @@
                             <createDependencyReducedPom>false</createDependencyReducedPom>
                             <transformers>
                                 <!--
-                                  핵심: META-INF/services/ 파일을 머지.
-                                  이 설정 없이 OTel agent JAR 과 합치면 extension 의
-                                  InstrumentationModule / AutoConfigurationCustomizerProvider
-                                  SPI 등록이 agent 쪽 파일에 덮어쓰여 사라짐.
+                                  META-INF/services/ 파일 머지.
+                                  Extension-only JAR 이므로 OTel agent fat JAR 와 충돌 없이
+                                  Hamster SPI 파일이 그대로 포함됨.
                                 -->
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
-                                <!--
-                                  올인원 agent JAR 에 필요한 MANIFEST 항목.
-                                  Premain-Class 가 없으면 -javaagent: 로 사용 불가.
-                                -->
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <manifestEntries>
-                                        <Premain-Class>io.opentelemetry.javaagent.OpenTelemetryAgent</Premain-Class>
-                                        <Agent-Class>io.opentelemetry.javaagent.OpenTelemetryAgent</Agent-Class>
-                                        <Can-Redefine-Classes>true</Can-Redefine-Classes>
-                                        <Can-Retransform-Classes>true</Can-Retransform-Classes>
-                                    </manifestEntries>
-                                </transformer>
                             </transformers>
                         </configuration>
                     </execution>
