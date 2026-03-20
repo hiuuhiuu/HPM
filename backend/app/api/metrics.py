@@ -1,5 +1,10 @@
-from typing import Literal
+import asyncio
+import json
+import time
+from typing import Literal, AsyncGenerator
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -8,6 +13,43 @@ from app.services import metrics_service, baseline_service
 router = APIRouter(prefix="/api")
 
 RangeKey = Literal["1h", "6h", "24h", "7d"]
+
+
+@router.get("/metrics/stream")
+async def metrics_sse():
+    """Server-Sent Events — WebSocket 미지원 프록시 환경을 위한 폴백.
+
+    중간 프록시가 WebSocket Upgrade 헤더를 제거하는 경우
+    프론트엔드가 /ws/metrics 대신 이 엔드포인트로 자동 전환한다.
+    5초마다 metrics_snapshot 이벤트를 push 한다.
+    """
+    async def generate() -> AsyncGenerator[str, None]:
+        from app.core.metrics_streamer import _snapshot
+        from app.core.database import AsyncSessionLocal
+
+        while True:
+            try:
+                async with AsyncSessionLocal() as db:
+                    snapshot = await _snapshot(db)
+                data = {
+                    "type": "metrics_snapshot",
+                    "ts":   int(time.time() * 1000),
+                    "services": snapshot or {},
+                }
+                yield f"data: {json.dumps(data)}\n\n"
+            except Exception:
+                # 오류 시 빈 snapshot 전송 후 계속 유지
+                yield f"data: {json.dumps({'type': 'metrics_snapshot', 'ts': int(time.time() * 1000), 'services': {}})}\n\n"
+            await asyncio.sleep(5)
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control":    "no-cache",
+            "X-Accel-Buffering": "no",   # nginx 버퍼링 비활성화 (SSE 즉시 전달)
+        },
+    )
 
 
 @router.get("/services")

@@ -109,14 +109,52 @@ export interface MetricsSnapshot {
   services: Record<string, LiveMetric>;
 }
 
+// SSE 폴백 임계치: WS 연결이 이 횟수 이상 실패하면 SSE로 전환
+const WS_MAX_RETRY = 3;
+
 export function useMetricsStream(): { snapshot: MetricsSnapshot | null; isConnected: boolean } {
   const [snapshot, setSnapshot] = useState<MetricsSnapshot | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
+  const sseRef = useRef<EventSource | null>(null);
   const reconnectRef = useRef<NodeJS.Timeout | null>(null);
   const retryCountRef = useRef<number>(0);
+  const sseActiveRef = useRef<boolean>(false);
+
+  // SSE 모드로 전환: EventSource('/api/metrics/stream') 연결
+  const connectSSE = useCallback(() => {
+    if (sseRef.current) return; // 이미 연결됨
+    console.info('[Metrics] Switching to SSE fallback (/api/metrics/stream)');
+    sseActiveRef.current = true;
+
+    const es = new EventSource('/api/metrics/stream');
+    sseRef.current = es;
+
+    es.onopen = () => {
+      console.info('[SSE] /api/metrics/stream connected');
+      setIsConnected(true);
+    };
+
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'metrics_snapshot') {
+          setSnapshot(data as MetricsSnapshot);
+        }
+      } catch { /* 무시 */ }
+    };
+
+    es.onerror = () => {
+      // EventSource는 자체 재연결을 수행하므로 별도 retry 로직 불필요
+      setIsConnected(false);
+      console.warn('[SSE] /api/metrics/stream connection error — browser will retry automatically');
+    };
+  }, []);
 
   const connect = useCallback(() => {
+    // SSE 모드가 이미 활성화된 경우 WS 시도 생략
+    if (sseActiveRef.current) return;
+
     const fullUrl = buildWsUrl('/ws/metrics');
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
@@ -141,20 +179,29 @@ export function useMetricsStream(): { snapshot: MetricsSnapshot | null; isConnec
     ws.onclose = () => {
       setIsConnected(false);
       wsRef.current = null;
-      const delay = backoffDelay(retryCountRef.current);
-      console.warn(`[WebSocket] /ws/metrics disconnected. Reconnecting in ${delay / 1000}s (retry #${retryCountRef.current + 1})`);
       retryCountRef.current += 1;
+
+      if (retryCountRef.current >= WS_MAX_RETRY) {
+        // WS 연결 3회 실패 → SSE 폴백으로 전환
+        console.warn(`[WebSocket] /ws/metrics failed ${retryCountRef.current} times — switching to SSE fallback`);
+        connectSSE();
+        return;
+      }
+
+      const delay = backoffDelay(retryCountRef.current - 1);
+      console.warn(`[WebSocket] /ws/metrics disconnected. Reconnecting in ${delay / 1000}s (retry #${retryCountRef.current})`);
       reconnectRef.current = setTimeout(connect, delay);
     };
 
     ws.onerror = () => ws.close();
-  }, []);
+  }, [connectSSE]);
 
   useEffect(() => {
     connect();
     return () => {
       if (reconnectRef.current) clearTimeout(reconnectRef.current);
       if (wsRef.current) wsRef.current.close();
+      if (sseRef.current) { sseRef.current.close(); sseRef.current = null; }
     };
   }, [connect]);
 
