@@ -2,8 +2,8 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    database_url: str = "postgresql+asyncpg://apm:apm1234@localhost:5432/apmdb"
-    secret_key: str = "apm-secret-key-change-in-production"
+    database_url: str
+    secret_key: str
     debug: bool = False
 
     # OTLP 수신 설정

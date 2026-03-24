@@ -4,13 +4,16 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+
+# 환경 설정 (시크릿 포함 — 절대 커밋 금지)
 .env
+.env.*
+!.env.example
 
 # Node
 node_modules/
 build/
 dist/
-.env.local
 
 # DB
 *.db

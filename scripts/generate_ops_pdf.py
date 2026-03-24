@@ -271,7 +271,7 @@ def build_pdf(output_path: str):
             ["호스트",   "localhost:5432"],
             ["DB명",     "apmdb"],
             ["사용자",   "apm"],
-            ["비밀번호", "apm1234"],
+            ["비밀번호", "설치 시 입력한 비밀번호"],
         ],
         [35*mm, W - 35*mm],
     ))
