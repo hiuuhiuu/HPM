@@ -1,6 +1,9 @@
+import logging
 from typing import Any, Dict, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_SETTINGS = {
     "retention_traces_days":  ("14", "트레이스 데이터 보존 기간(일)"),
@@ -74,25 +77,20 @@ async def _apply_retention_policy(db: AsyncSession, table_name: str, days: int) 
     """특정 테이블에 대한 TimescaleDB 보존 정책 갱신"""
     if days <= 0:
         return
-        
+
     try:
-        # 기존 정책 삭제 시도 (에러 발생해도 무시할 수 있도록 IF EXISTS 구문과 유사한 효과를 위해 PL/pgSQL 활용 가능성을 염두에 둠)
-        # remove_retention_policy는 정책이 없으면 에러가 발생하므로 주의.
         await db.execute(text(f"SELECT remove_retention_policy('{table_name}', if_exists => true)"))
         await db.commit()
     except Exception as e:
         await db.rollback()
-        # logging.warning(f"Failed to remove retention policy for {table_name}: {e}")
-        pass
-        
+        logger.warning("보존 정책 제거 실패(table=%s): %s", table_name, e)
+
     try:
-        # 새로운 정책 추가 (if_not_exists: 이미 존재해도 오류 없이 넘어감)
         await db.execute(text(f"SELECT add_retention_policy('{table_name}', INTERVAL '{days} days', if_not_exists => true)"))
         await db.commit()
     except Exception as e:
         await db.rollback()
-        # logging.warning(f"Failed to add retention policy for {table_name}: {e}")
-        pass
+        logger.warning("보존 정책 추가 실패(table=%s, days=%s): %s", table_name, days, e)
 
 async def initialize_retention_policies(db: AsyncSession) -> None:
     """서버 구동 시 초기 보존 정책(시스템 설정값 기준) 반영"""

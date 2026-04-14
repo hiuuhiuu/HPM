@@ -8,6 +8,7 @@ import { useGlobalTime } from '../contexts/GlobalTimeContext';
 
 type Range    = '1h' | '6h' | '24h' | '7d';
 type Resolved = 'all' | 'unresolved' | 'resolved';
+type ViewMode = 'group' | 'list';
 
 const RANGES: Range[]       = ['1h', '6h', '24h', '7d'];
 const RESOLVED_OPTS = [
@@ -15,6 +16,24 @@ const RESOLVED_OPTS = [
   { key: 'unresolved', label: '미해결' },
   { key: 'resolved',   label: '해결됨' },
 ] as const;
+const VIEW_OPTS: Array<{ key: ViewMode; label: string }> = [
+  { key: 'group', label: '그룹' },
+  { key: 'list',  label: '개별' },
+];
+
+interface ErrorGroup {
+  fingerprint: string;
+  error_type: string;
+  message: string;
+  variants: number;
+  total_count: number;
+  first_seen: string | null;
+  last_seen: string | null;
+  unresolved_variants: number;
+  services: string[];
+  sample_trace_id: string | null;
+  latest_id: number | null;
+}
 
 export default function Errors() {
   const { globalRange, setGlobalRange } = useGlobalTime();
@@ -22,8 +41,10 @@ export default function Errors() {
   const [range,    setRangeLocal] = useState<Range>(globalRange as Range);
   const setRange = (r: Range) => { setRangeLocal(r); setGlobalRange(r); };
   const [resolved, setResolved] = useState<Resolved>('all');
+  const [viewMode, setViewMode] = useState<ViewMode>('group');
   const [page,     setPage]     = useState(1);
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
   const [resolving, setResolving] = useState<number | null>(null);
   // 목록 강제 갱신용 카운터
   const [refreshKey, setRefreshKey] = useState(0);
@@ -47,9 +68,20 @@ export default function Errors() {
     resolved === 'unresolved' ? '&resolved=false' :
     resolved === 'resolved'   ? '&resolved=true'  : '';
   const { data: errorList, loading } = usePolling<ErrorList>(
-    () => apiFetch(`/api/errors?range=${range}&page=${page}&limit=20${svcParam}${resolvedParam}`),
+    () => viewMode === 'list'
+      ? apiFetch(`/api/errors?range=${range}&page=${page}&limit=20${svcParam}${resolvedParam}`)
+      : Promise.resolve({ total: 0, page: 1, limit: 20, items: [] } as ErrorList),
     30_000,
-    [service, range, resolved, page, refreshKey],
+    [service, range, resolved, page, refreshKey, viewMode],
+  );
+
+  // 그룹 뷰용 데이터
+  const { data: groupList, loading: groupLoading } = usePolling<ErrorGroup[]>(
+    () => viewMode === 'group'
+      ? apiFetch(`/api/errors/groups?range=${range}&limit=100${svcParam}${resolvedParam}`)
+      : Promise.resolve([] as ErrorGroup[]),
+    30_000,
+    [service, range, resolved, refreshKey, viewMode],
   );
 
   const handleResolve = async (item: ErrorItem) => {
@@ -75,6 +107,14 @@ export default function Errors() {
               <option value="">전체 서비스</option>
               {services?.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
             </select>
+            <div className="tab-group">
+              {VIEW_OPTS.map(o => (
+                <button key={o.key} onClick={() => { setViewMode(o.key); setPage(1); }}
+                  className={`tab-btn${viewMode === o.key ? ' active' : ''}`}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
             <div className="tab-group">
               {RESOLVED_OPTS.map(o => (
                 <button key={o.key} onClick={() => { setResolved(o.key); setPage(1); }}
@@ -134,7 +174,19 @@ export default function Errors() {
         </div>
       )}
 
-      {/* 에러 목록 */}
+      {/* 그룹 뷰 */}
+      {viewMode === 'group' && (
+        <GroupList
+          groups={groupList ?? []}
+          loading={groupLoading}
+          expandedGroup={expandedGroup}
+          onExpand={fp => setExpandedGroup(prev => prev === fp ? null : fp)}
+          range={range}
+        />
+      )}
+
+      {/* 개별 에러 목록 */}
+      {viewMode === 'list' && (
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
@@ -240,15 +292,223 @@ export default function Errors() {
           </tbody>
         </table>
       </div>
+      )}
 
-      {/* 페이지네이션 */}
-      {totalPages > 1 && (
+      {/* 페이지네이션 (개별 뷰에서만) */}
+      {viewMode === 'list' && totalPages > 1 && (
         <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 16 }}>
           <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} style={pageBtn}>← 이전</button>
           <span style={{ color: '#94a3b8', fontSize: 13, alignSelf: 'center' }}>{page} / {totalPages}</span>
           <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} style={pageBtn}>다음 →</button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── 에러 그룹 리스트 ────────────────────────────────────
+
+function GroupList({
+  groups, loading, expandedGroup, onExpand, range,
+}: {
+  groups: ErrorGroup[];
+  loading: boolean;
+  expandedGroup: string | null;
+  onExpand: (fp: string) => void;
+  range: Range;
+}) {
+  if (loading) {
+    return <div className="card" style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>로딩 중...</div>;
+  }
+  if (groups.length === 0) {
+    return <div className="card" style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>
+      {range} 내 그룹화된 에러가 없습니다.
+    </div>;
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {groups.map(g => (
+        <GroupRow
+          key={g.fingerprint}
+          group={g}
+          expanded={expandedGroup === g.fingerprint}
+          onToggle={() => onExpand(g.fingerprint)}
+          range={range}
+        />
+      ))}
+    </div>
+  );
+}
+
+function GroupRow({
+  group, expanded, onToggle, range,
+}: {
+  group: ErrorGroup;
+  expanded: boolean;
+  onToggle: () => void;
+  range: Range;
+}) {
+  const last = group.last_seen ? format(parseISO(group.last_seen), 'MM-dd HH:mm') : '—';
+  const first = group.first_seen ? format(parseISO(group.first_seen), 'MM-dd HH:mm') : '—';
+  return (
+    <div className="card" style={{
+      padding: 0, overflow: 'hidden',
+      borderColor: group.unresolved_variants > 0 ? 'rgba(248,113,113,0.25)' : undefined,
+    }}>
+      {/* 그룹 헤더 */}
+      <div
+        onClick={onToggle}
+        style={{
+          padding: '12px 16px', cursor: 'pointer',
+          display: 'grid', gridTemplateColumns: '1fr 100px 120px 140px 40px', gap: 16,
+          alignItems: 'center',
+          background: expanded ? '#1e2035' : 'transparent',
+          borderLeft: expanded ? '3px solid #ef4444' : '3px solid transparent',
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <span style={{
+              display: 'inline-block', padding: '2px 8px', borderRadius: 4,
+              background: '#450a0a', color: '#fca5a5', fontSize: 12, fontWeight: 600,
+              maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0,
+            }}>
+              {group.error_type}
+            </span>
+            {group.variants > 1 && (
+              <span style={{
+                fontSize: 11, color: '#64748b',
+                border: '1px solid #2d3148', borderRadius: 10, padding: '1px 7px',
+              }}>
+                {group.variants}개 변형
+              </span>
+            )}
+            {group.services.length > 0 && (
+              <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                {group.services.join(', ')}
+              </span>
+            )}
+          </div>
+          <div style={{
+            color: '#e2e8f0', fontSize: 13,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {group.message}
+          </div>
+        </div>
+
+        <div style={{ textAlign: 'right' }}>
+          <div style={{
+            display: 'inline-block', padding: '3px 10px', borderRadius: 10,
+            background: '#450a0a', color: '#fca5a5', fontSize: 13, fontWeight: 700,
+          }}>
+            {group.total_count.toLocaleString()}회
+          </div>
+          {group.unresolved_variants > 0 && (
+            <div style={{ fontSize: 10, color: '#f87171', marginTop: 3 }}>
+              미해결 {group.unresolved_variants}
+            </div>
+          )}
+        </div>
+
+        <div style={{ fontSize: 11, color: '#64748b' }}>
+          <div style={{ color: '#94a3b8' }}>최근 {last}</div>
+          <div>최초 {first}</div>
+        </div>
+
+        <div style={{ textAlign: 'right' }}>
+          {group.sample_trace_id ? (
+            <Link
+              to={`/traces?trace_id=${group.sample_trace_id}`}
+              onClick={e => e.stopPropagation()}
+              style={{ color: '#a5b4fc', fontSize: 12, textDecoration: 'none' }}
+            >
+              샘플 트레이스 →
+            </Link>
+          ) : (
+            <span style={{ color: '#475569', fontSize: 12 }}>—</span>
+          )}
+        </div>
+
+        <div style={{ color: '#64748b', textAlign: 'center' }}>
+          {expanded ? '▾' : '▸'}
+        </div>
+      </div>
+
+      {/* 확장: 그룹 내 개별 에러 목록 */}
+      {expanded && <GroupExpanded fingerprint={group.fingerprint} />}
+    </div>
+  );
+}
+
+function GroupExpanded({ fingerprint }: { fingerprint: string }) {
+  const [items, setItems] = useState<ErrorItem[] | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    apiFetch<ErrorItem[]>(`/api/errors/groups/${fingerprint}?range=7d&limit=30`)
+      .then(data => { if (!cancelled) setItems(data ?? []); })
+      .catch(() => { if (!cancelled) setItems([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [fingerprint]);
+
+  if (loading) {
+    return <div style={{ padding: '16px 20px', color: '#64748b', fontSize: 13 }}>로딩 중...</div>;
+  }
+  if (!items || items.length === 0) {
+    return <div style={{ padding: '16px 20px', color: '#64748b', fontSize: 13 }}>내역 없음.</div>;
+  }
+  return (
+    <div style={{ background: '#12141f', borderTop: '1px solid #2d3148' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <thead>
+          <tr style={{ color: '#64748b', fontSize: 11 }}>
+            <th style={thS}>발생 시각</th>
+            <th style={thS}>서비스 / 인스턴스</th>
+            <th style={thS}>메시지 변형</th>
+            <th style={{ ...thS, textAlign: 'center' }}>횟수</th>
+            <th style={thS}>상태</th>
+            <th style={thS}>트레이스</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map(it => (
+            <tr key={it.id} style={{ borderTop: '1px solid #1e2035' }}>
+              <td style={{ ...tdS, color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                {format(parseISO(it.time), 'MM-dd HH:mm:ss')}
+              </td>
+              <td style={{ ...tdS, color: '#e2e8f0' }}>
+                {it.service}
+                {it.instance && <span style={{ color: '#475569', fontSize: 11, display: 'block' }}>{it.instance}</span>}
+              </td>
+              <td style={{ ...tdS, color: '#e2e8f0', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {it.message}
+              </td>
+              <td style={{ ...tdS, textAlign: 'center', color: '#fca5a5' }}>
+                {it.count}
+              </td>
+              <td style={tdS}>
+                <span className={`badge ${it.resolved ? 'badge-ok' : 'badge-error'}`}>
+                  {it.resolved ? '해결' : '미해결'}
+                </span>
+              </td>
+              <td style={tdS}>
+                {it.trace_id ? (
+                  <Link
+                    to={`/traces?trace_id=${it.trace_id}`}
+                    style={{ color: '#a5b4fc', fontSize: 12, textDecoration: 'none' }}
+                  >
+                    열기 →
+                  </Link>
+                ) : <span style={{ color: '#475569' }}>—</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

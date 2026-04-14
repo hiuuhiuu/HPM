@@ -126,6 +126,16 @@ function edgeWidth(callCount: number, allCounts: number[]): number {
   return 1.5 + (Math.log1p(callCount) / Math.log1p(max)) * 3.5;
 }
 
+/** 엣지 흐름 애니메이션 속도 계층. 에러율 높으면 무조건 'error' 우선. */
+function edgeSpeedClass(callCount: number, allCounts: number[], errRate: number): string {
+  if (errRate >= 5) return 'topo-edge-flow error';
+  const max = Math.max(...allCounts, 1);
+  const ratio = callCount / max;
+  if (ratio > 0.6) return 'topo-edge-flow fast';
+  if (ratio < 0.2) return 'topo-edge-flow slow';
+  return 'topo-edge-flow';
+}
+
 /* ─── 툴팁 타입 ─── */
 type TooltipState =
   | { kind: 'node'; node: LayoutNode; x: number; y: number }
@@ -341,11 +351,22 @@ export default function Topology() {
                 d = `M ${src.x} ${src.y} L ${ex} ${ey}`;
               }
 
+              const speedClass = edgeSpeedClass(edge.call_count, allCalls, edge.error_rate_pct);
+
               return (
-                <path key={i} d={d} fill="none" stroke={stroke} strokeWidth={sw}
-                  strokeOpacity={0.7} markerEnd={marker} style={{ cursor: 'pointer' }}
-                  onMouseEnter={e => handleEdgeEnter(e, edge)}
-                  onMouseLeave={() => setTooltip(null)} />
+                <g key={i}>
+                  {/* 정적 배경 엣지 (존재감 유지) */}
+                  <path d={d} fill="none" stroke={stroke} strokeWidth={sw}
+                    strokeOpacity={0.25} markerEnd={marker} />
+                  {/* 흐름 애니메이션 엣지 (dashed 이동) */}
+                  <path d={d} fill="none" stroke={stroke} strokeWidth={sw}
+                    strokeOpacity={0.9}
+                    className={speedClass}
+                    style={{ cursor: 'pointer' }}
+                    onMouseEnter={e => handleEdgeEnter(e, edge)}
+                    onMouseLeave={() => setTooltip(null)}
+                  />
+                </g>
               );
             })}
 
@@ -361,8 +382,25 @@ export default function Topology() {
               const stroke  = isInstanceMode ? errColor(node.error_rate_pct) : '#1a1d27';
               const strokeW = isInstanceMode ? 3 : 2;
 
+              // 활성 노드(요청이 있는)만 펄스. 트래픽/에러율 기반 속도 결정.
+              const pulseColor = errColor(node.error_rate_pct);
+              const isActive = node.request_count > 0;
+              const pulseClass =
+                node.error_rate_pct >= 5 ? 'topo-node-pulse-ring error'
+                : node.request_count > 100 ? 'topo-node-pulse-ring fast'
+                : 'topo-node-pulse-ring';
+
               return (
                 <g key={node.id}>
+                  {/* 펄스 링 (활성 노드만) */}
+                  {isActive && (
+                    <circle
+                      cx={node.x} cy={node.y}
+                      className={pulseClass}
+                      stroke={pulseColor} strokeWidth={2}
+                      style={{ ['--r0' as any]: `${r}px`, ['--r1' as any]: `${r * 1.9}px` } as React.CSSProperties}
+                    />
+                  )}
                   <circle cx={node.x} cy={node.y} r={r}
                     fill={fill} fillOpacity={0.85}
                     stroke={stroke} strokeWidth={strokeW}

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 // 상대경로 사용: nginx가 /api/, /otlp/ 를 백엔드로 프록시
-// REACT_APP_API_URL은 개발환경(localhost:3000)에서만 설정 필요
+// REACT_APP_API_URL은 개발환경(localhost:9700)에서만 설정 필요
 const BASE_URL = process.env.REACT_APP_API_URL || '';
 
 /** 동일 메시지를 30초 내 재발행 억제 */
@@ -58,8 +58,16 @@ export async function apiPut<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
+/** 파괴적 관리자 API에 사용되는 localStorage 키. Settings 화면에서 설정한다. */
+export const ADMIN_API_KEY_STORAGE = 'hamster_admin_api_key';
+
 export async function apiDelete(path: string): Promise<void> {
-  const res = await fetch(`${BASE_URL}${path}`, { method: 'DELETE' });
+  const headers: Record<string, string> = {};
+  try {
+    const key = localStorage.getItem(ADMIN_API_KEY_STORAGE);
+    if (key) headers['X-Admin-API-Key'] = key;
+  } catch { /* localStorage 접근 실패 시 무시 */ }
+  const res = await fetch(`${BASE_URL}${path}`, { method: 'DELETE', headers });
   if (!res.ok) throw await toApiError(res);
 }
 

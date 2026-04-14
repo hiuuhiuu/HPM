@@ -9,7 +9,7 @@ docker-compose ps
 
 echo ""
 echo "접속 주소:"
-echo "  대시보드:   http://localhost:3000"
+echo "  대시보드:   http://localhost:9700"
 echo "  API 서버:   http://localhost:8000"
 echo "  API 문서:   http://localhost:8000/docs"
 echo "  OTLP HTTP: http://localhost:8000/otlp (Java Agent 연결)"

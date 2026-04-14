@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { usePolling, apiFetch } from '../hooks/useApi';
 import { Service, ServiceSummary, Timeseries } from '../types';
 import StatCard, { AnomalyInfo } from '../components/StatCard';
-import MetricChart, { BaselineData } from '../components/MetricChart';
+import MetricChart, { BaselineData, DeploymentMarker } from '../components/MetricChart';
 import { useGlobalTime } from '../contexts/GlobalTimeContext';
 import { useMetricsStream } from '../hooks/useWebSocket';
 import PageHeader from '../components/PageHeader';
@@ -98,6 +98,14 @@ export default function Metrics() {
   // WebSocket 실시간 메트릭 스트림
   const { snapshot, isConnected: wsConnected } = useMetricsStream();
   const liveData = selectedService ? snapshot?.services?.[selectedService] : undefined;
+
+  // 배포 마커 (서비스 변경 시 재조회, 30초 주기)
+  const { data: deployments } = usePolling<DeploymentMarker[]>(
+    () => selectedService
+      ? apiFetch(`/api/deployments?service=${encodeURIComponent(selectedService)}&range=${range}`)
+      : Promise.resolve([]),
+    30_000, [selectedService, range],
+  );
 
   // 통계적 베이스라인 (서비스·레인지 변경 시 재조회)
   const [baselines, setBaselines] = useState<Record<string, BaselineData | null>>({});
@@ -299,6 +307,7 @@ export default function Metrics() {
                 loading={chartsLoading}
                 syncId="jvm-metrics"
                 baseline={baselines[c.key] ?? null}
+                deployments={deployments ?? []}
               />
             ))}
           </div>
@@ -320,6 +329,7 @@ export default function Metrics() {
                     loading={chartsLoading}
                     syncId="jvm-metrics"
                     baseline={baselines[c.key] ?? null}
+                    deployments={deployments ?? []}
                   />
                 ))}
               </div>
@@ -335,9 +345,14 @@ export default function Metrics() {
 }
 
 // ── JVM Deep Monitoring 섹션 ────────────────────────────────
+interface PoolPoint { time: string; value: number; }
+interface JvmPoolsResponse { pools: Record<string, PoolPoint[]>; }
+
 function JvmDeepMonitoring({ sectionService, sectionRange }: { sectionService: string, sectionRange: Range }) {
-  const { data: pools, loading: poolsLoading } = usePolling<any>(
-    () => sectionService ? apiFetch(`/api/metrics/${sectionService}/jvm-pools?range=${sectionRange}`) : Promise.resolve(null),
+  const { data: pools, loading: poolsLoading } = usePolling<JvmPoolsResponse>(
+    () => sectionService
+      ? apiFetch<JvmPoolsResponse>(`/api/metrics/${sectionService}/jvm-pools?range=${sectionRange}`)
+      : Promise.resolve({ pools: {} } as JvmPoolsResponse),
     30_000, [sectionService, sectionRange]
   );
   const { data: gcDuration } = usePolling<Timeseries>(
@@ -364,7 +379,7 @@ function JvmDeepMonitoring({ sectionService, sectionRange }: { sectionService: s
 
       <div className="grid-2">
         {/* 메모리 풀 (Eden, Old, Survivor) */}
-        <MemoryPoolChart pools={pools?.pools ?? {}} loading={poolsLoading} />
+        <MemoryPoolChart pools={pools?.pools ?? {}} loading={poolsLoading ?? false} />
 
         {/* GC 지표 */}
         <div style={{ display: 'grid', gridTemplateRows: '1fr 1fr', gap: 16 }}>
@@ -385,19 +400,25 @@ function JvmDeepMonitoring({ sectionService, sectionRange }: { sectionService: s
 }
 
 // ── 메모리 풀 전용 차트 (Stacked) ───────────────────────────
-function MemoryPoolChart({ pools, loading }: { pools: any, loading: boolean }) {
-  // 데이터를 Recharts format으로 변환
-  const poolNames = Object.keys(pools);
-  const timeMap: Record<string, any> = {};
+interface MemoryPoolRow {
+  time: string;
+  [pool: string]: string | number;
+}
 
-  poolNames.forEach(name => {
-    pools[name].forEach((pt: any) => {
-      if (!timeMap[pt.time]) timeMap[pt.time] = { time: pt.time };
-      timeMap[pt.time][name] = pt.value / 1024 / 1024; // MB
+function MemoryPoolChart({ pools, loading }: { pools: Record<string, PoolPoint[]>, loading: boolean }) {
+  const { chartData, poolNames } = useMemo(() => {
+    const names = Object.keys(pools);
+    const timeMap: Record<string, MemoryPoolRow> = {};
+    names.forEach(name => {
+      (pools[name] ?? []).forEach(pt => {
+        if (pt == null || pt.value == null || !Number.isFinite(pt.value)) return;
+        if (!timeMap[pt.time]) timeMap[pt.time] = { time: pt.time };
+        timeMap[pt.time][name] = pt.value / 1024 / 1024; // MB
+      });
     });
-  });
-
-  const chartData = Object.values(timeMap).sort((a: any, b: any) => a.time.localeCompare(b.time));
+    const rows = Object.values(timeMap).sort((a, b) => a.time.localeCompare(b.time));
+    return { chartData: rows, poolNames: names };
+  }, [pools]);
   const colors: Record<string, string> = {
     'Eden': '#34d399', 'Old': '#6366f1', 'Survivor': '#f59e0b',
     'G1 Eden Space': '#34d399', 'G1 Old Gen': '#6366f1', 'G1 Survivor Space': '#f59e0b',

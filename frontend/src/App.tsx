@@ -12,6 +12,7 @@ import Settings from './pages/Settings';
 import ThreadDumps from './pages/ThreadDumps';
 import CustomDashboard from './pages/CustomDashboard';
 import SlowQueries from './pages/SlowQueries';
+import CommandPalette from './components/CommandPalette';
 import { useDashboardWebSocket } from './hooks/useWebSocket';
 import { GlobalTimeProvider } from './contexts/GlobalTimeContext';
 import './App.css';
@@ -19,6 +20,7 @@ import './App.css';
 function App() {
   const { unresolved, activeAlerts } = useDashboardWebSocket();
   const [toasts, setToasts] = useState<{ id: number; message: string }[]>([]);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -34,12 +36,48 @@ function App() {
     return () => window.removeEventListener('api-error', handler);
   }, []);
 
+  // Cmd+K / Ctrl+K 전역 단축키
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen(v => !v);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <Router>
       <GlobalTimeProvider>
       <div className="app">
-        <nav className="sidebar">
+        <nav className="sidebar" aria-label="주요 메뉴">
           <HamsterLogo />
+          <button
+            onClick={() => setPaletteOpen(true)}
+            title="검색 팔레트 열기 (⌘K / Ctrl+K)"
+            aria-label="검색 팔레트 열기 (Cmd+K)"
+            style={{
+              margin: '0 12px 10px', padding: '7px 10px',
+              background: '#252840', border: '1px solid var(--border)',
+              borderRadius: 8, color: 'var(--text-muted)', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 8,
+              fontSize: 12, fontFamily: 'inherit',
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = '#6366f1'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <path d="M21 21l-4.35-4.35" />
+            </svg>
+            <span>검색</span>
+            <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.7 }}>⌘K</span>
+          </button>
           <ul className="nav-links">
             {/* ─ 대시보드 ─ */}
             <div className="nav-section-label">대시보드</div>
@@ -149,6 +187,8 @@ function App() {
           </Routes>
         </main>
       </div>
+
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
 
       {/* 글로벌 에러 Toast */}
       <div style={{ position: 'fixed', bottom: 24, right: 24, display: 'flex', flexDirection: 'column', gap: 8, zIndex: 9999 }}>

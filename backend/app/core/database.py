@@ -160,10 +160,68 @@ async def ensure_errors_migration() -> None:
                     ON errors (service, error_type, message);
             """))
 
+            # 5. fingerprint 컬럼 + 인덱스 (의미 단위 그룹핑용)
+            await session.execute(text(
+                "ALTER TABLE errors ADD COLUMN IF NOT EXISTS fingerprint TEXT;"
+            ))
+            await session.execute(text(
+                "CREATE INDEX IF NOT EXISTS idx_errors_fingerprint_time "
+                "ON errors (fingerprint, time DESC);"
+            ))
+
+            # 6. 기존 레코드 fingerprint backfill (Python에서 정규화 후 채움)
+            from app.core.error_fingerprint import compute_fingerprint
+            pending = await session.execute(text(
+                "SELECT id, error_type, message, stack_trace FROM errors "
+                "WHERE fingerprint IS NULL"
+            ))
+            rows = pending.mappings().all()
+            if rows:
+                updates = [
+                    {
+                        "id": r["id"],
+                        "fp": compute_fingerprint(r["error_type"], r["message"], r["stack_trace"]),
+                    }
+                    for r in rows
+                ]
+                await session.execute(
+                    text("UPDATE errors SET fingerprint = :fp WHERE id = :id"),
+                    updates,
+                )
+
             await session.commit()
-        logger.info("[DB] errors 마이그레이션 완료 (count/first_seen/dedup/unique)")
+        logger.info(
+            "[DB] errors 마이그레이션 완료 (count/first_seen/dedup/unique/fingerprint, backfill=%d)",
+            len(rows) if 'rows' in locals() else 0,
+        )
     except Exception as e:
         logger.warning(f"[DB] errors 마이그레이션 실패 (무시): {e}")
+
+
+async def ensure_deployments_table() -> None:
+    """deployments 테이블 생성 (멱등). 배포 마커 기록용."""
+    try:
+        async with AsyncSessionLocal() as session:
+            await session.execute(text("""
+                CREATE TABLE IF NOT EXISTS deployments (
+                    id           SERIAL PRIMARY KEY,
+                    service      TEXT NOT NULL,
+                    version      TEXT,
+                    commit_sha   TEXT,
+                    environment  TEXT DEFAULT 'production',
+                    description  TEXT,
+                    marker_time  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+            """))
+            await session.execute(text(
+                "CREATE INDEX IF NOT EXISTS idx_deployments_service_time "
+                "ON deployments (service, marker_time DESC);"
+            ))
+            await session.commit()
+        logger.info("[DB] deployments 테이블 확인 완료")
+    except Exception as e:
+        logger.warning(f"[DB] deployments 테이블 생성 실패 (무시): {e}")
 
 
 async def ensure_agent_configs_table() -> None:

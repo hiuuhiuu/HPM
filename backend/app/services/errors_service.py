@@ -90,6 +90,91 @@ async def resolve_error(
     return await get_error_by_id(db, error_id)
 
 
+async def get_error_groups(
+    db: AsyncSession,
+    service: Optional[str] = None,
+    resolved: Optional[bool] = None,
+    range_key: str = "1h",
+    limit: int = 50,
+) -> List[Dict[str, Any]]:
+    """fingerprint 기준 에러 그룹 집계."""
+    interval = RANGE_INTERVAL.get(range_key, "1 hour")
+
+    filters = [f"time > NOW() - INTERVAL '{interval}'", "fingerprint IS NOT NULL"]
+    params: Dict[str, Any] = {"limit": limit}
+    if service:
+        filters.append("service = :service")
+        params["service"] = service
+    if resolved is not None:
+        filters.append("resolved = :resolved")
+        params["resolved"] = resolved
+
+    where = " AND ".join(filters)
+
+    sql = f"""
+        SELECT
+            fingerprint,
+            MAX(error_type)                        AS error_type,
+            MAX(message)                           AS message,
+            COUNT(DISTINCT id)                     AS variants,
+            SUM(COALESCE(count, 1))                AS total_count,
+            MIN(COALESCE(first_seen, time))        AS first_seen,
+            MAX(time)                              AS last_seen,
+            COUNT(*) FILTER (WHERE NOT resolved)   AS unresolved_variants,
+            ARRAY_AGG(DISTINCT service)            AS services,
+            (ARRAY_AGG(trace_id ORDER BY time DESC)
+                FILTER (WHERE trace_id IS NOT NULL))[1] AS sample_trace_id,
+            (ARRAY_AGG(id ORDER BY time DESC))[1]  AS latest_id
+        FROM errors
+        WHERE {where}
+        GROUP BY fingerprint
+        ORDER BY total_count DESC
+        LIMIT :limit
+    """
+    result = await db.execute(text(sql), params)
+    rows = result.mappings().all()
+    return [
+        {
+            "fingerprint":         row["fingerprint"],
+            "error_type":          row["error_type"],
+            "message":             row["message"],
+            "variants":            int(row["variants"] or 0),
+            "total_count":         int(row["total_count"] or 0),
+            "first_seen":          row["first_seen"].isoformat() if row["first_seen"] else None,
+            "last_seen":           row["last_seen"].isoformat() if row["last_seen"] else None,
+            "unresolved_variants": int(row["unresolved_variants"] or 0),
+            "services":            list(row["services"] or []),
+            "sample_trace_id":     row["sample_trace_id"],
+            "latest_id":           row["latest_id"],
+        }
+        for row in rows
+    ]
+
+
+async def get_group_errors(
+    db: AsyncSession,
+    fingerprint: str,
+    range_key: str = "24h",
+    limit: int = 50,
+) -> List[Dict[str, Any]]:
+    """특정 fingerprint에 속하는 개별 에러 목록."""
+    interval = RANGE_INTERVAL.get(range_key, "24 hours")
+    result = await db.execute(
+        text(f"""
+            SELECT id, time, first_seen, service, instance, error_type, message,
+                   stack_trace, trace_id, span_id, resolved, attributes, count
+            FROM errors
+            WHERE fingerprint = :fp
+              AND time > NOW() - INTERVAL '{interval}'
+            ORDER BY time DESC
+            LIMIT :limit
+        """),
+        {"fp": fingerprint, "limit": limit},
+    )
+    rows = result.mappings().all()
+    return [_row_to_dict(r) for r in rows]
+
+
 async def get_error_stats(
     db: AsyncSession,
     service: Optional[str] = None,

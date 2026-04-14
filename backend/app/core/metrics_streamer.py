@@ -1,5 +1,5 @@
 """
-메트릭 실시간 스트리밍 — 5초마다 WebSocket broadcast
+메트릭 실시간 스트리밍 — 주기적으로 WebSocket broadcast
 """
 import asyncio
 import logging
@@ -8,6 +8,10 @@ from sqlalchemy import text
 from app.core.database import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
+
+# 스트리밍 간격(초). 짧을수록 실시간 체감이 크지만 DB 부하가 증가한다.
+# 쿼리 3건(services + metrics + traces)은 ms 단위라 2초면 부하 여유.
+STREAM_INTERVAL_S = 2
 
 _CPU_NAMES    = ["jvm.cpu.usage", "process.cpu.usage", "jvm.process.cpu.usage"]
 _MEM_USED     = ["jvm.memory.used", "jvm.memory.heap.used"]
@@ -86,12 +90,12 @@ async def _snapshot(db) -> dict:
 
 
 async def metrics_stream_loop() -> None:
-    """5초 간격으로 메트릭 스냅샷을 수집하여 /ws/metrics 구독자에게 broadcast"""
+    """STREAM_INTERVAL_S 간격으로 메트릭 스냅샷을 수집하여 /ws/metrics 구독자에게 broadcast"""
     from app.core.websocket import metrics_manager
-    logger.info("[MetricsStreamer] 시작 (간격: 5초)")
+    logger.info("[MetricsStreamer] 시작 (간격: %s초)", STREAM_INTERVAL_S)
 
     while True:
-        await asyncio.sleep(5)
+        await asyncio.sleep(STREAM_INTERVAL_S)
 
         if not metrics_manager.active_connections:
             continue

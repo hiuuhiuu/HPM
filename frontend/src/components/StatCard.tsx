@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 export interface AnomalyInfo {
   sigma: number;
@@ -17,6 +17,19 @@ interface Props {
 export default function StatCard({ title, value, unit, sub, color, anomaly }: Props) {
   const isAnomaly = !!anomaly;
   const accentHex = isAnomaly ? '#f87171' : (color ?? '#6366f1');
+
+  // 값 변화 시 짧은 flash. 실시간 스트리밍 체감용.
+  const prevRef = useRef<typeof value>(value);
+  const [flash, setFlash] = useState(false);
+  useEffect(() => {
+    if (prevRef.current !== value && prevRef.current !== null && value !== null) {
+      setFlash(true);
+      const t = setTimeout(() => setFlash(false), 600);
+      prevRef.current = value;
+      return () => clearTimeout(t);
+    }
+    prevRef.current = value;
+  }, [value]);
 
   return (
     <div
@@ -56,7 +69,14 @@ export default function StatCard({ title, value, unit, sub, color, anomaly }: Pr
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 3, lineHeight: 1 }}>
         <div
           className="stat-value"
-          style={isAnomaly ? { color: 'var(--color-error)' } : color ? { color } : undefined}
+          style={{
+            ...(isAnomaly ? { color: 'var(--color-error)' } : color ? { color } : {}),
+            transition: 'color 120ms ease-out, text-shadow 120ms ease-out',
+            ...(flash ? {
+              color: accentHex,
+              textShadow: `0 0 12px ${accentHex}80`,
+            } : {}),
+          }}
         >
           {value ?? '—'}
         </div>

@@ -36,8 +36,9 @@ services:
     container_name: apm-backend
     restart: always
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-      SECRET_KEY:   ${SECRET_KEY}
+      DATABASE_URL:  ${DATABASE_URL}
+      SECRET_KEY:    ${SECRET_KEY}
+      ADMIN_API_KEY: ${ADMIN_API_KEY}
     expose:
       - "8000"                   # 외부 직접 노출 없이 nginx 내부 통신만
     depends_on:

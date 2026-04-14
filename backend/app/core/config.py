@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     secret_key: str = _DEFAULT_SECRET
     debug: bool = False
 
+    # 파괴적 관리자 API (DELETE 엔드포인트 등)에 요구되는 API Key.
+    # 미설정 시 인증이 비활성화되어 통과, 설정 시 헤더 불일치는 401.
+    admin_api_key: str = ""
+
     # CORS — 쉼표 구분 허용 오리진 목록 (.env: ALLOWED_ORIGINS=http://host1,http://host2)
     allowed_origins: List[str] = []
 

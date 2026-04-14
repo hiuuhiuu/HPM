@@ -35,3 +35,7 @@ agent-extension/dist/
 *.pdf
 *.ttf
 *.otf
+
+# Playwright
+/frontend/playwright-report/
+/frontend/test-results/

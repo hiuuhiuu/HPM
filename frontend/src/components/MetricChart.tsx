@@ -22,6 +22,16 @@ export interface BaselineData {
   sample_count: number;
 }
 
+export interface DeploymentMarker {
+  id: number;
+  service: string;
+  version?: string | null;
+  commit_sha?: string | null;
+  environment?: string | null;
+  description?: string | null;
+  marker_time: string;
+}
+
 interface Props {
   title: string;
   data: TimeseriesPoint[];
@@ -37,6 +47,8 @@ interface Props {
   syncId?: string;
   /** 통계적 베이스라인 (DB raw 단위 — 내부에서 transform 적용) */
   baseline?: BaselineData | null;
+  /** 배포 마커 (차트 범위 내 marker_time만 표시) */
+  deployments?: DeploymentMarker[];
 }
 
 const DEFAULT_COLOR = '#6366f1';
@@ -81,12 +93,33 @@ function CustomTooltip({
 
 export default function MetricChart({
   title, data, color = DEFAULT_COLOR,
-  transform, unit, decimals = 2, loading, syncId, baseline,
+  transform, unit, decimals = 2, loading, syncId, baseline, deployments,
 }: Props) {
   const chartData = data.map(d => ({
     time: d.time,
     value: d.value !== null && transform ? transform(d.value) : d.value,
   }));
+
+  // 배포 마커: 차트 x축 범위 내만 표시. 가장 가까운 data 포인트의 time에 스냅.
+  const markers = (() => {
+    if (!deployments?.length || !chartData.length) return [];
+    const times = chartData.map(d => new Date(d.time).getTime());
+    const minT = times[0], maxT = times[times.length - 1];
+    return deployments
+      .map(dep => {
+        const t = new Date(dep.marker_time).getTime();
+        if (t < minT || t > maxT) return null;
+        // 가장 가까운 data.time 찾기 — Recharts ReferenceLine x는 data key 값이어야 함
+        let bestIdx = 0;
+        let bestDiff = Math.abs(times[0] - t);
+        for (let i = 1; i < times.length; i++) {
+          const d = Math.abs(times[i] - t);
+          if (d < bestDiff) { bestDiff = d; bestIdx = i; }
+        }
+        return { dep, xKey: chartData[bestIdx].time };
+      })
+      .filter((x): x is { dep: DeploymentMarker; xKey: string } => x !== null);
+  })();
 
   // baseline 값에 transform 적용 (DB는 raw 단위, 차트는 표시 단위)
   const bl: BaselineData | null = baseline && transform ? {
@@ -188,6 +221,25 @@ export default function MetricChart({
                 strokeDasharray="3 5" strokeWidth={1}
               />
             )}
+
+            {/* 배포 마커 수직선 */}
+            {markers.map(({ dep, xKey }) => (
+              <ReferenceLine
+                key={dep.id}
+                x={xKey}
+                stroke="#a5b4fc"
+                strokeWidth={1.5}
+                strokeDasharray="4 3"
+                ifOverflow="extendDomain"
+                label={{
+                  value: `▼ ${dep.version || dep.environment || '배포'}`,
+                  position: 'top',
+                  fontSize: 10,
+                  fill: '#a5b4fc',
+                  offset: 2,
+                }}
+              />
+            ))}
 
             <Area
               type="monotone"

@@ -136,7 +136,7 @@ def build_pdf(output_path: str):
     story.append(table(
         ["포트", "서비스", "설명"],
         [
-            ["3000", "프론트엔드",   "대시보드 UI  →  http://localhost:3000"],
+            ["9700", "프론트엔드",   "대시보드 UI  →  http://localhost:9700"],
             ["8000", "백엔드 API",   "REST API / OTLP 수신  →  http://localhost:8000"],
             ["5432", "TimescaleDB", "PostgreSQL DB (컨테이너 내부: apm-db:5432)"],
         ],

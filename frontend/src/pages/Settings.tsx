@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { apiFetch, apiPut, apiDelete, apiPatch } from '../hooks/useApi';
+import { apiFetch, apiPut, apiPost, apiDelete, apiPatch } from '../hooks/useApi';
+import { useLocalStorage, useLocalStorageString } from '../hooks/useLocalStorage';
 import './Settings.css';
 
 // ── 타입 ────────────────────────────────────────────────
@@ -138,6 +139,9 @@ const Settings: React.FC = () => {
         {/* ── 서비스/인스턴스 관리 ── */}
         <InstanceManager onGlobalMessage={setMessage} />
 
+        {/* ── 배포 마커 관리 ── */}
+        <DeploymentsManager onGlobalMessage={setMessage} />
+
         {/* ── 에이전트 설정 ── */}
         <AgentConfigManager onGlobalMessage={setMessage} />
 
@@ -159,14 +163,11 @@ export default Settings;
 // ── 대시보드 기본 뷰 설정 ────────────────────────────────
 
 function DashboardViewSettings() {
-  const [defaultLevel, setDefaultLevel] = useState<'service' | 'instance'>(
-    () => (localStorage.getItem('dashboard_default_level') as 'service' | 'instance') || 'instance'
-  );
+  const [defaultLevel, setDefaultLevel] = useLocalStorageString('dashboard_default_level', 'instance');
   const [saved, setSaved] = useState(false);
 
   const handleChange = (level: 'service' | 'instance') => {
     setDefaultLevel(level);
-    localStorage.setItem('dashboard_default_level', level);
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
   };
@@ -214,27 +215,19 @@ function DashboardViewSettings() {
 // ── 트레이스 뷰 설정 ────────────────────────────────────
 
 function TraceViewSettings() {
-  const [minSpanMs, setMinSpanMs] = useState(() =>
-    Number(localStorage.getItem('trace_min_span_ms') || '0')
-  );
-  const [minTraceDurationMs, setMinTraceDurationMs] = useState(() =>
-    Number(localStorage.getItem('trace_min_duration_ms') || '0')
-  );
+  const [minSpanMs, setMinSpanMs] = useLocalStorage<number>('trace_min_span_ms', 0);
+  const [minTraceDurationMs, setMinTraceDurationMs] = useLocalStorage<number>('trace_min_duration_ms', 0);
   const [saved, setSaved] = useState(false);
 
   const markSaved = () => { setSaved(true); setTimeout(() => setSaved(false), 1500); };
 
   const handleSpanChange = (val: number) => {
-    const v = Math.max(0, val);
-    setMinSpanMs(v);
-    localStorage.setItem('trace_min_span_ms', String(v));
+    setMinSpanMs(Math.max(0, val));
     markSaved();
   };
 
   const handleDurationChange = (val: number) => {
-    const v = Math.max(0, val);
-    setMinTraceDurationMs(v);
-    localStorage.setItem('trace_min_duration_ms', String(v));
+    setMinTraceDurationMs(Math.max(0, val));
     markSaved();
   };
 
@@ -677,6 +670,244 @@ function AgentConfigManager({
     </section>
   );
 }
+
+// ── 배포 마커 관리 컴포넌트 ─────────────────────────────
+
+interface DeploymentRecord {
+  id: number;
+  service: string;
+  version: string | null;
+  commit_sha: string | null;
+  environment: string | null;
+  description: string | null;
+  marker_time: string;
+  created_at: string;
+}
+
+function DeploymentsManager({
+  onGlobalMessage,
+}: {
+  onGlobalMessage: (msg: { type: 'success' | 'error'; text: string } | null) => void;
+}) {
+  const [records, setRecords] = useState<DeploymentRecord[]>([]);
+  const [services, setServices] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [form, setForm] = useState({
+    service: '',
+    version: '',
+    commit_sha: '',
+    environment: 'production',
+    description: '',
+  });
+
+  const fetchAll = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [deps, svcs] = await Promise.all([
+        apiFetch<DeploymentRecord[]>('/api/deployments?limit=100'),
+        apiFetch<Array<{ name: string }>>('/api/services'),
+      ]);
+      setRecords(deps ?? []);
+      setServices((svcs ?? []).map(s => s.name));
+    } catch {
+      onGlobalMessage({ type: 'error', text: '배포 기록을 불러오지 못했습니다.' });
+    } finally {
+      setLoading(false);
+    }
+  }, [onGlobalMessage]);
+
+  useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.service.trim()) {
+      onGlobalMessage({ type: 'error', text: '서비스명을 지정해 주세요.' });
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await apiPost('/api/deployments', {
+        service:     form.service.trim(),
+        version:     form.version.trim() || null,
+        commit_sha:  form.commit_sha.trim() || null,
+        environment: form.environment.trim() || 'production',
+        description: form.description.trim() || null,
+      });
+      onGlobalMessage({ type: 'success', text: `[${form.service}] 배포 기록이 추가되었습니다.` });
+      setForm({ service: form.service, version: '', commit_sha: '', environment: form.environment, description: '' });
+      await fetchAll();
+    } catch {
+      onGlobalMessage({ type: 'error', text: '배포 기록 추가 중 오류가 발생했습니다.' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    try {
+      await apiDelete(`/api/deployments/${id}`);
+      setRecords(prev => prev.filter(r => r.id !== id));
+      onGlobalMessage({ type: 'success', text: '배포 기록이 삭제되었습니다.' });
+    } catch {
+      onGlobalMessage({ type: 'error', text: '배포 기록 삭제 중 오류가 발생했습니다.' });
+    }
+  };
+
+  const inputStyle: React.CSSProperties = {
+    background: '#0d0f18', border: '1px solid #2d3148',
+    color: '#f1f5f9', borderRadius: 6, padding: '6px 10px',
+    fontSize: 13, outline: 'none',
+  };
+
+  return (
+    <section className="settings-section">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div>
+          <h2 style={{ marginBottom: 4 }}>배포 마커 (Deployment Markers)</h2>
+          <p className="section-desc" style={{ margin: 0 }}>
+            배포 시점을 기록하면 대시보드/메트릭 차트에 수직선으로 표시되어,
+            "이 배포 이후 지연이 증가했다"는 연관 분석이 가능해집니다.
+          </p>
+        </div>
+        <button onClick={fetchAll} style={{ ...btnStyle, background: '#252840', color: '#94a3b8' }}>
+          새로 고침
+        </button>
+      </div>
+
+      {/* 새 배포 기록 폼 */}
+      <form onSubmit={handleCreate} style={{ ...cardStyle, marginTop: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
+          <div>
+            <label style={labelStyle}>서비스 *</label>
+            <input
+              list="dm-services"
+              value={form.service}
+              onChange={e => setForm(p => ({ ...p, service: e.target.value }))}
+              placeholder="jeus-sample"
+              style={{ ...inputStyle, width: '100%' }}
+              required
+            />
+            <datalist id="dm-services">
+              {services.map(s => <option key={s} value={s} />)}
+            </datalist>
+          </div>
+          <div>
+            <label style={labelStyle}>버전</label>
+            <input
+              value={form.version}
+              onChange={e => setForm(p => ({ ...p, version: e.target.value }))}
+              placeholder="v1.2.3"
+              style={{ ...inputStyle, width: '100%' }}
+            />
+          </div>
+          <div>
+            <label style={labelStyle}>커밋 SHA</label>
+            <input
+              value={form.commit_sha}
+              onChange={e => setForm(p => ({ ...p, commit_sha: e.target.value }))}
+              placeholder="a1b2c3d"
+              style={{ ...inputStyle, width: '100%' }}
+            />
+          </div>
+          <div>
+            <label style={labelStyle}>환경</label>
+            <input
+              value={form.environment}
+              onChange={e => setForm(p => ({ ...p, environment: e.target.value }))}
+              placeholder="production"
+              style={{ ...inputStyle, width: '100%' }}
+            />
+          </div>
+        </div>
+        <div style={{ marginTop: 10 }}>
+          <label style={labelStyle}>메모 (선택)</label>
+          <input
+            value={form.description}
+            onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
+            placeholder="결제 모듈 hotfix"
+            style={{ ...inputStyle, width: '100%' }}
+          />
+        </div>
+        <div style={{ marginTop: 12, textAlign: 'right' }}>
+          <button
+            type="submit"
+            disabled={submitting}
+            style={{ ...btnStyle, background: '#3730a3', color: '#a5b4fc', fontWeight: 600 }}
+          >
+            {submitting ? '기록 중…' : '지금 배포 기록'}
+          </button>
+        </div>
+      </form>
+
+      {/* 기록 목록 */}
+      <div style={{ marginTop: 12 }}>
+        {loading ? (
+          <div style={{ color: '#64748b', fontSize: 13, padding: '12px 0' }}>로딩 중...</div>
+        ) : records.length === 0 ? (
+          <div style={{ color: '#64748b', fontSize: 13, padding: '12px 0' }}>
+            아직 기록된 배포가 없습니다. 위 폼에서 첫 기록을 추가하십시오.
+          </div>
+        ) : (
+          <div style={cardStyle}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ color: '#64748b', fontSize: 11 }}>
+                  <th style={thStyle}>시각</th>
+                  <th style={thStyle}>서비스</th>
+                  <th style={thStyle}>버전 / 커밋</th>
+                  <th style={thStyle}>환경</th>
+                  <th style={thStyle}>메모</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>삭제</th>
+                </tr>
+              </thead>
+              <tbody>
+                {records.map(r => (
+                  <tr key={r.id} style={{ borderTop: '1px solid #2d3148' }}>
+                    <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
+                      {new Date(r.marker_time).toLocaleString('ko-KR')}
+                    </td>
+                    <td style={tdStyle}>{r.service}</td>
+                    <td style={{ ...tdStyle, fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>
+                      {r.version || '—'}
+                      {r.commit_sha && <span style={{ color: '#64748b', marginLeft: 6 }}>{r.commit_sha.slice(0, 8)}</span>}
+                    </td>
+                    <td style={tdStyle}>
+                      <span style={{
+                        display: 'inline-block', padding: '2px 8px', borderRadius: 4,
+                        fontSize: 11, fontWeight: 600,
+                        background: r.environment === 'production' ? '#1e3a5f' : '#3f2a5f',
+                        color:      r.environment === 'production' ? '#60a5fa' : '#c4b5fd',
+                      }}>
+                        {r.environment || '—'}
+                      </span>
+                    </td>
+                    <td style={{ ...tdStyle, color: '#94a3b8', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {r.description || '—'}
+                    </td>
+                    <td style={{ ...tdStyle, textAlign: 'right' }}>
+                      <button
+                        onClick={() => handleDelete(r.id)}
+                        style={{ ...btnStyle, background: '#252840', color: '#f87171', fontSize: 12 }}
+                      >
+                        삭제
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+const labelStyle: React.CSSProperties = {
+  display: 'block', fontSize: 11, color: '#64748b',
+  marginBottom: 4, fontWeight: 500,
+};
 
 // ── 스타일 상수 ─────────────────────────────────────────
 

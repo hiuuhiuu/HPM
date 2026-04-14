@@ -6,6 +6,7 @@ import {
   BarChart, Bar, Cell,
 } from 'recharts';
 import { usePolling, apiFetch, apiPost } from '../hooks/useApi';
+import { useLocalStorage } from '../hooks/useLocalStorage';
 import { Service, TraceList, TraceListItem, TraceDetail, TraceStats } from '../types';
 import TraceWaterfall from '../components/TraceWaterfall';
 import { format, parseISO } from 'date-fns';
@@ -33,7 +34,7 @@ export default function Traces() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [hideSystemTraces, setHideSystemTraces] = useState(true);
   const [hideStaticResources, setHideStaticResources] = useState(false);
-  const minTraceDurationMs = Number(localStorage.getItem('trace_min_duration_ms') || '0');
+  const [minTraceDurationMs] = useLocalStorage<number>('trace_min_duration_ms', 0);
 
   // Errors 페이지에서 trace_id 파라미터로 이동 시 자동 선택
   useEffect(() => {

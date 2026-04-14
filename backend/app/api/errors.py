@@ -37,6 +37,29 @@ async def error_stats(
     return await errors_service.get_error_stats(db, service, range)
 
 
+@router.get("/errors/groups")
+async def error_groups(
+    service:  Optional[str]  = Query(None),
+    resolved: Optional[bool] = Query(None),
+    range:    RangeKey       = Query("1h"),
+    limit:    int            = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+):
+    """fingerprint 기준 에러 그룹 집계 — 동일 원인 에러를 묶어서 제공"""
+    return await errors_service.get_error_groups(db, service, resolved, range, limit)
+
+
+@router.get("/errors/groups/{fingerprint}")
+async def error_group_detail(
+    fingerprint: str,
+    range:       RangeKey = Query("24h"),
+    limit:       int      = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+):
+    """특정 fingerprint 그룹 내 개별 에러 목록"""
+    return await errors_service.get_group_errors(db, fingerprint, range, limit)
+
+
 @router.get("/errors/{error_id}")
 async def get_error(error_id: int, db: AsyncSession = Depends(get_db)):
     """에러 상세"""

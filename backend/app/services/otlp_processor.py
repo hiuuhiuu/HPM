@@ -11,6 +11,9 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
+from app.core.error_fingerprint import compute_fingerprint
+from app.core.span_filter import is_noisy_span
+
 logger = logging.getLogger(__name__)
 
 
@@ -319,6 +322,7 @@ async def process_traces(db: AsyncSession, body: bytes) -> int:
     span_rows: List[Dict] = []
     error_rows: List[Dict] = []
     services_seen = set()
+    noisy_dropped = 0
 
     for rs in req.resource_spans:
         resource_attrs = _extract_attrs(rs.resource.attributes)
@@ -349,6 +353,11 @@ async def process_traces(db: AsyncSession, body: bytes) -> int:
 
                 # 정적 리소스 스팬 — DB 저장 생략 (용량·성능 절약)
                 if "[정적 리소스]" in norm_name:
+                    continue
+
+                # Quartz 등 의미 없는 내부 스팬(주기적 DB 폴링) drop
+                if is_noisy_span(span.name, attrs):
+                    noisy_dropped += 1
                     continue
 
                 events = [
@@ -411,27 +420,31 @@ async def process_traces(db: AsyncSession, body: bytes) -> int:
                     else:
                         http_error_msg = None
 
+                    err_type = (
+                        exc_attrs.get("exception.type")
+                        or attrs.get("exception.type")
+                        or span.status.message
+                        or http_error_type
+                        or "UnknownError"
+                    )
+                    err_msg = (
+                        exc_attrs.get("exception.message")
+                        or attrs.get("exception.message")
+                        or http_error_msg
+                        or span.status.message
+                        or "Unknown error"
+                    )
+                    err_stack = (
+                        exc_attrs.get("exception.stacktrace")
+                        or attrs.get("exception.stacktrace")
+                    )
                     error_rows.append({
                         "service": service,
                         "instance": instance,
-                        "error_type": (
-                            exc_attrs.get("exception.type")
-                            or attrs.get("exception.type")
-                            or span.status.message
-                            or http_error_type
-                            or "UnknownError"
-                        ),
-                        "message": (
-                            exc_attrs.get("exception.message")
-                            or attrs.get("exception.message")
-                            or http_error_msg
-                            or span.status.message
-                            or "Unknown error"
-                        ),
-                        "stack_trace": (
-                            exc_attrs.get("exception.stacktrace")
-                            or attrs.get("exception.stacktrace")
-                        ),
+                        "error_type": err_type,
+                        "message": err_msg,
+                        "stack_trace": err_stack,
+                        "fingerprint": compute_fingerprint(err_type, err_msg, err_stack),
                         "trace_id": trace_id,
                         "span_id": span_id,
                         "attributes": json.dumps(attrs),
@@ -455,25 +468,29 @@ async def process_traces(db: AsyncSession, body: bytes) -> int:
         await db.execute(
             text("""
                 INSERT INTO errors
-                    (service, instance, error_type, message, stack_trace,
+                    (service, instance, error_type, message, stack_trace, fingerprint,
                      trace_id, span_id, attributes, first_seen)
                 VALUES
-                    (:service, :instance, :error_type, :message, :stack_trace,
+                    (:service, :instance, :error_type, :message, :stack_trace, :fingerprint,
                      :trace_id, :span_id, CAST(:attributes AS jsonb), NOW())
                 ON CONFLICT (service, error_type, message) DO UPDATE SET
-                    count    = errors.count + 1,
-                    time     = NOW(),
-                    trace_id = EXCLUDED.trace_id,
-                    span_id  = EXCLUDED.span_id,
-                    instance = EXCLUDED.instance,
-                    resolved = FALSE
+                    count       = errors.count + 1,
+                    time        = NOW(),
+                    trace_id    = EXCLUDED.trace_id,
+                    span_id     = EXCLUDED.span_id,
+                    instance    = EXCLUDED.instance,
+                    fingerprint = EXCLUDED.fingerprint,
+                    resolved    = FALSE
             """),
             error_rows,
         )
 
+    if noisy_dropped:
+        logger.debug("[Filter] 노이즈 스팬 %d건 drop (Quartz 등)", noisy_dropped)
+
     if span_rows or error_rows:
         await db.commit()
-        
+
         # Broadcast updated error stats if new errors were ingested
         if error_rows:
             try:
@@ -487,7 +504,10 @@ async def process_traces(db: AsyncSession, body: bytes) -> int:
             except Exception as e:
                 logger.error(f"Failed to broadcast error update: {e}")
 
-    logger.info(f"[Traces] 스팬 저장: {len(span_rows)}개 | 에러: {len(error_rows)}개")
+    logger.info(
+        "[Traces] 스팬 저장: %d개 | 에러: %d개 | 노이즈 drop: %d개",
+        len(span_rows), len(error_rows), noisy_dropped,
+    )
     return len(span_rows)
 
 

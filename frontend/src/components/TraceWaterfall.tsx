@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { SpanDetail, TraceDetail, LogItem, LogList } from '../types';
 import { format, parseISO } from 'date-fns';
 import { apiFetch } from '../hooks/useApi';
+import { useLocalStorage } from '../hooks/useLocalStorage';
 
 // ── 스팬 트리 빌더 ──────────────────────────────────────
 
@@ -255,7 +256,7 @@ export default function TraceWaterfall({ trace }: Props) {
   const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null);
   const [collapsed, setCollapsed]       = useState<Set<string>>(new Set());
   const [hideHealthChecks, setHideHealthChecks] = useState(true);
-  const minSpanMs = Number(localStorage.getItem('trace_min_span_ms') || '0');
+  const [minSpanMs] = useLocalStorage<number>('trace_min_span_ms', 0);
   const [showLogs, setShowLogs]         = useState(false);
   const [traceLogs, setTraceLogs]       = useState<LogItem[]>([]);
   const [logsLoading, setLogsLoading]   = useState(false);
