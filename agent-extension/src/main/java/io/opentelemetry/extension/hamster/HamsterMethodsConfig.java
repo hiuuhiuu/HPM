@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.logging.Logger;
 
@@ -42,6 +43,32 @@ public final class HamsterMethodsConfig {
     // ── 데이터 클래스 ──────────────────────────────────────────────────────────
 
     /**
+     * 스팬 억제 규칙 — 매칭된 스팬은 Sampler 레벨에서 드랍한다.
+     *
+     * 지원 형식 (hamster-methods.conf):
+     *   suppress:span:<prefix>       → 스팬 이름이 prefix 로 시작하면 억제
+     *   suppress:http:<path-prefix>  → HTTP SERVER 스팬의 URL 경로가 prefix 로 시작하면 억제
+     *   suppress:sql:<prefix>        → db.statement 속성이 prefix 로 시작하면 억제 (대소문자 무시)
+     *   suppress:attr:<key>=<value>  → OTel 속성 key=value 가 정확히 일치하면 억제
+     *   suppress:class:<prefix>      → code.namespace 속성이 prefix 로 시작하면 억제
+     */
+    public static final class SuppressRule {
+        public enum Type { SPAN_NAME, HTTP_PATH, SQL_STATEMENT, ATTRIBUTE, CLASS_NAME }
+
+        public final Type   type;
+        public final String pattern;   // SPAN_NAME / HTTP_PATH / SQL_STATEMENT / CLASS_NAME
+        public final String attrKey;   // ATTRIBUTE only
+        public final String attrValue; // ATTRIBUTE only
+
+        SuppressRule(Type type, String pattern, String attrKey, String attrValue) {
+            this.type      = type;
+            this.pattern   = pattern;
+            this.attrKey   = attrKey;
+            this.attrValue = attrValue;
+        }
+    }
+
+    /**
      * ByteBuddy 계측 규칙.
      */
     public static final class WildcardRule {
@@ -73,16 +100,16 @@ public final class HamsterMethodsConfig {
         }
     }
 
-    /** 파싱 결과 — 모든 규칙이 wildcardRules 에 통합됨. */
+    /** 파싱 결과 */
     public static final class ParsedConfig {
-        /**
-         * ByteBuddy 계측 규칙 목록.
-         * ClassName[method1,method2], ClassName[*], pkg.*, pkg.** 모두 포함.
-         */
-        public final List<WildcardRule> wildcardRules;
+        /** ByteBuddy 계측 규칙 목록 — ClassName[m1,m2], pkg.*, pkg.** 등 */
+        public final List<WildcardRule>  wildcardRules;
+        /** Sampler 레벨 억제 규칙 목록 */
+        public final List<SuppressRule>  suppressRules;
 
-        ParsedConfig(List<WildcardRule> wildcardRules) {
+        ParsedConfig(List<WildcardRule> wildcardRules, List<SuppressRule> suppressRules) {
             this.wildcardRules = Collections.unmodifiableList(wildcardRules);
+            this.suppressRules = Collections.unmodifiableList(suppressRules);
         }
 
         public boolean isEmpty() {
@@ -140,19 +167,63 @@ public final class HamsterMethodsConfig {
         String none = "[Hamster] No method config file found. Hooking disabled.";
         System.err.println(none);
         logger.warning(none);
-        return new ParsedConfig(Collections.<WildcardRule>emptyList());
+        return new ParsedConfig(
+                Collections.<WildcardRule>emptyList(),
+                Collections.<SuppressRule>emptyList());
     }
 
     // ── 파싱 ───────────────────────────────────────────────────────────────────
 
     private static ParsedConfig parse(File file) {
-        List<WildcardRule> rules = new ArrayList<>();
+        List<WildcardRule>  rules    = new ArrayList<>();
+        List<SuppressRule>  suppress = new ArrayList<>();
 
         try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 line = line.trim();
                 if (line.isEmpty() || line.startsWith("#")) continue;
+
+                // ── 스팬 억제 규칙: suppress:<type>:<pattern> ─────────────────
+                if (line.startsWith("suppress:")) {
+                    String rest = line.substring("suppress:".length());
+
+                    if (rest.startsWith("span:")) {
+                        suppress.add(new SuppressRule(
+                                SuppressRule.Type.SPAN_NAME,
+                                rest.substring("span:".length()).trim(),
+                                null, null));
+                    } else if (rest.startsWith("http:")) {
+                        suppress.add(new SuppressRule(
+                                SuppressRule.Type.HTTP_PATH,
+                                rest.substring("http:".length()).trim(),
+                                null, null));
+                    } else if (rest.startsWith("sql:")) {
+                        // 대소문자 무시 — 저장 시 소문자로 정규화
+                        String pattern = rest.substring("sql:".length()).trim().toLowerCase(Locale.ROOT);
+                        suppress.add(new SuppressRule(
+                                SuppressRule.Type.SQL_STATEMENT, pattern, null, null));
+                    } else if (rest.startsWith("attr:")) {
+                        String kv = rest.substring("attr:".length()).trim();
+                        int eq = kv.indexOf('=');
+                        if (eq > 0) {
+                            suppress.add(new SuppressRule(
+                                    SuppressRule.Type.ATTRIBUTE, null,
+                                    kv.substring(0, eq).trim(),
+                                    kv.substring(eq + 1).trim()));
+                        } else {
+                            logger.warning("[Hamster] Skipping invalid suppress:attr line (missing '='): " + line);
+                        }
+                    } else if (rest.startsWith("class:")) {
+                        suppress.add(new SuppressRule(
+                                SuppressRule.Type.CLASS_NAME,
+                                rest.substring("class:".length()).trim(),
+                                null, null));
+                    } else {
+                        logger.warning("[Hamster] Skipping unknown suppress type: " + line);
+                    }
+                    continue;
+                }
 
                 // ── 상속 후킹: extends:SuperClass[methods] ──────────────────────
                 if (line.startsWith("extends:")) {
@@ -216,6 +287,6 @@ public final class HamsterMethodsConfig {
             return null;
         }
 
-        return new ParsedConfig(rules);
+        return new ParsedConfig(rules, suppress);
     }
 }
