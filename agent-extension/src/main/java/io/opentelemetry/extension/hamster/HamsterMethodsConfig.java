@@ -48,24 +48,28 @@ public final class HamsterMethodsConfig {
         /**
          * 매칭 기준 문자열.
          *  - classLevel=true  : 정확한 FQCN (예: "com.bank.service.OrderService")
-         *  - classLevel=false : 패키지 접두사 (예: "com.bank.service.") — 끝에 점 포함
+         *  - classLevel=false, extendsClass=false : 패키지 접두사 (예: "com.bank.service.") — 끝에 점 포함
+         *  - extendsClass=true : 슈퍼클래스/인터페이스 FQCN (예: "javax.servlet.http.HttpServlet")
          */
         public final String pattern;
         /** true → ** (하위 패키지 포함), false → * (직계) 또는 classLevel */
         public final boolean recursive;
         /** true → 특정 클래스를 직접 지정 (ClassName[methods] 또는 ClassName[*]) */
         public final boolean classLevel;
+        /** true → 해당 클래스/인터페이스를 상속·구현한 모든 하위 클래스 (extends:ClassName[methods]) */
+        public final boolean extendsClass;
         /**
          * null  → 클래스의 모든 메서드 (ClassName[*], pkg.*, pkg.**)
          * 비어있지 않은 Set → 지정 메서드만 (ClassName[method1,method2])
          */
         public final Set<String> methods;
 
-        WildcardRule(String pattern, boolean recursive, boolean classLevel, Set<String> methods) {
-            this.pattern    = pattern;
-            this.recursive  = recursive;
-            this.classLevel = classLevel;
-            this.methods    = methods;
+        WildcardRule(String pattern, boolean recursive, boolean classLevel, boolean extendsClass, Set<String> methods) {
+            this.pattern     = pattern;
+            this.recursive   = recursive;
+            this.classLevel  = classLevel;
+            this.extendsClass = extendsClass;
+            this.methods     = methods;
         }
     }
 
@@ -150,15 +154,37 @@ public final class HamsterMethodsConfig {
                 line = line.trim();
                 if (line.isEmpty() || line.startsWith("#")) continue;
 
+                // ── 상속 후킹: extends:SuperClass[methods] ──────────────────────
+                if (line.startsWith("extends:")) {
+                    String rest = line.substring("extends:".length()).trim();
+                    if (rest.contains("[") && rest.endsWith("]")) {
+                        int bracket    = rest.indexOf('[');
+                        String fqcn    = rest.substring(0, bracket).trim();
+                        String methods = rest.substring(bracket + 1, rest.length() - 1).trim();
+                        Set<String> methodSet = null;
+                        if (!"*".equals(methods)) {
+                            methodSet = new HashSet<>();
+                            for (String m : methods.split(",")) {
+                                String trimmed = m.trim();
+                                if (!trimmed.isEmpty()) methodSet.add(trimmed);
+                            }
+                        }
+                        rules.add(new WildcardRule(fqcn, false, false, true, methodSet));
+                    } else {
+                        logger.warning("[Hamster] Skipping invalid extends rule: " + line);
+                    }
+                    continue;
+                }
+
                 // ── 패키지 와일드카드: com.bank.service.* 또는 com.bank.** ──────
                 if (line.endsWith(".**")) {
                     String pkg = line.substring(0, line.length() - 3);
-                    rules.add(new WildcardRule(pkg + ".", true, false, null));
+                    rules.add(new WildcardRule(pkg + ".", true, false, false, null));
                     continue;
                 }
                 if (line.endsWith(".*")) {
                     String pkg = line.substring(0, line.length() - 2);
-                    rules.add(new WildcardRule(pkg + ".", false, false, null));
+                    rules.add(new WildcardRule(pkg + ".", false, false, false, null));
                     continue;
                 }
 
@@ -170,7 +196,7 @@ public final class HamsterMethodsConfig {
 
                     if ("*".equals(methods)) {
                         // ClassName[*] → 클래스의 모든 메서드
-                        rules.add(new WildcardRule(fqcn, false, true, null));
+                        rules.add(new WildcardRule(fqcn, false, true, false, null));
                     } else {
                         // ClassName[method1,method2] → 지정 메서드만
                         Set<String> methodSet = new HashSet<>();
@@ -178,7 +204,7 @@ public final class HamsterMethodsConfig {
                             String trimmed = m.trim();
                             if (!trimmed.isEmpty()) methodSet.add(trimmed);
                         }
-                        rules.add(new WildcardRule(fqcn, false, true, methodSet));
+                        rules.add(new WildcardRule(fqcn, false, true, false, methodSet));
                     }
                     continue;
                 }

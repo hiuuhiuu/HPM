@@ -56,9 +56,9 @@ JAVA_OPTS="${JAVA_OPTS} -Dotel.logs.exporter=otlp"
 
 ### 3-2. 설정 파일 형식
 
-네 가지 형식을 지원합니다.
+다섯 가지 형식을 지원합니다.
 
-#### ① 특정 메서드 지정 (기존)
+#### ① 특정 메서드 지정
 ```
 com.bank.service.TransferService[transfer,validate,rollback]
 com.bank.service.AccountService[getBalance,deposit,withdraw]
@@ -84,6 +84,28 @@ com.bank.**
 ```
 해당 패키지와 **모든 하위 패키지**의 클래스 전체를 수집합니다.
 
+#### ⑤ 상속 클래스 자동 후킹 `extends:슈퍼클래스[메서드]`
+```
+extends:javax.servlet.http.HttpServlet[doGet,doPost,service,_jspService]
+```
+지정한 슈퍼클래스/인터페이스를 **상속·구현한 모든 하위 클래스**를 자동으로 후킹합니다.
+클래스명을 직접 나열하지 않아도 되므로, **JSP 컴파일 서블릿처럼 자동 생성되는 클래스**에 특히 유용합니다.
+
+| 상황 | 설정 예시 |
+|------|-----------|
+| 커스텀 서블릿 전체 | `extends:javax.servlet.http.HttpServlet[doGet,doPost,service]` |
+| JSP 본문 실행 포함 | `extends:javax.servlet.http.HttpServlet[doGet,doPost,service,_jspService]` |
+| JEUS/Jasper JSP 베이스 | `extends:org.apache.jasper.runtime.HttpJspBase[_jspService]` |
+| 커스텀 인터페이스 구현체 전체 | `extends:com.example.common.BusinessHandler[execute]` |
+
+> **JSP 콜 트리 확인 방법**: `_jspService`는 JSP가 컴파일된 서블릿의 본문 실행 메서드입니다.
+> 이 메서드를 후킹하면 JSP 호출 스팬 아래에 JSP 내부에서 호출된 비즈니스 메서드들이
+> 자식 스팬으로 나타납니다.
+
+> **주의**: `extends:` 규칙은 WAS 기동 시 해당 슈퍼타입을 상속한 모든 클래스를 검사합니다.
+> `HttpServlet`처럼 광범위한 슈퍼클래스 사용 시 후킹 대상 클래스가 많아질 수 있으므로
+> 반드시 메서드 목록을 명시하세요.
+
 #### 혼합 사용 예시
 ```
 # 특정 메서드만
@@ -97,6 +119,9 @@ com.bank.util.*
 
 # 하위 패키지 포함 전체
 com.bank.external.**
+
+# JSP + 서블릿 콜 트리 (상속 자동 감지)
+extends:javax.servlet.http.HttpServlet[doGet,doPost,service,_jspService]
 ```
 
 > **주의**: 패키지 와일드카드(`*`, `**`)는 범위가 넓을수록 WAS 기동 시간과 트레이스 수가 증가합니다.

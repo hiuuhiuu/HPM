@@ -55,7 +55,9 @@ public class HamsterExtensionCustomizer implements AutoConfigurationCustomizerPr
             logger.warning(header);
             for (HamsterMethodsConfig.WildcardRule r : rules) {
                 String kind;
-                if (r.classLevel) {
+                if (r.extendsClass) {
+                    kind = "extends[" + (r.methods == null ? "*" : r.methods) + "]";
+                } else if (r.classLevel) {
                     kind = r.methods == null ? "class[*]" : "class" + r.methods;
                 } else {
                     kind = r.recursive ? ".**" : ".*";

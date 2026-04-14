@@ -66,6 +66,13 @@ public class HamsterPackageInstrumentation implements TypeInstrumentation {
     private static ElementMatcher.Junction<TypeDescription> ruleToClassMatcher(
             final HamsterMethodsConfig.WildcardRule rule) {
 
+        if (rule.extendsClass) {
+            // extends:SuperClass[methods] → SuperClass 를 상속·구현한 모든 하위 클래스
+            // 슈퍼클래스 자신은 제외 (비즈니스 로직이 없는 추상 클래스를 후킹하지 않기 위해)
+            return ElementMatchers.hasSuperType(ElementMatchers.named(rule.pattern))
+                    .and(ElementMatchers.not(ElementMatchers.named(rule.pattern)));
+        }
+
         if (rule.classLevel) {
             // ClassName[*] / ClassName[method1,method2] → 정확한 FQCN 매칭
             return ElementMatchers.named(rule.pattern);
@@ -100,20 +107,26 @@ public class HamsterPackageInstrumentation implements TypeInstrumentation {
         return new ElementMatcher.Junction.AbstractBase<MethodDescription>() {
             @Override
             public boolean matches(MethodDescription target) {
-                String className  = target.getDeclaringType().asErasure().getName();
+                TypeDescription declaringType = target.getDeclaringType().asErasure();
+                String className  = declaringType.getName();
                 String methodName = target.getName();
 
                 for (HamsterMethodsConfig.WildcardRule rule : HamsterMethodsConfig.get().wildcardRules) {
-                    if (!classMatchesRule(rule, className)) continue;
+                    boolean classMatched;
+                    if (rule.extendsClass) {
+                        // extends 규칙: 타입 계층에서 슈퍼타입 여부 확인
+                        classMatched = typeExtendsPattern(rule.pattern, declaringType);
+                    } else {
+                        classMatched = classMatchesRule(rule, className);
+                    }
+                    if (!classMatched) continue;
 
                     // 규칙이 이 클래스에 해당함
                     if (rule.methods == null) {
-                        // 모든 메서드 대상
-                        return true;
+                        return true; // 모든 메서드 대상
                     }
                     if (rule.methods.contains(methodName)) {
-                        // 지정 메서드 목록에 포함
-                        return true;
+                        return true; // 지정 메서드 목록에 포함
                     }
                 }
                 return false;
@@ -135,5 +148,31 @@ public class HamsterPackageInstrumentation implements TypeInstrumentation {
         // non-recursive: 직계 자식 클래스만
         if (!className.startsWith(rule.pattern)) return false;
         return !className.substring(rule.pattern.length()).contains(".");
+    }
+
+    /**
+     * ByteBuddy TypeDescription 을 통해 타입 계층을 탐색하여
+     * 해당 클래스가 superPattern 을 상속·구현하는지 확인한다.
+     * Class.forName() 없이 bytecode descriptor 레벨에서 동작한다.
+     */
+    private static boolean typeExtendsPattern(String superPattern, TypeDescription type) {
+        // 슈퍼클래스 체인 탐색
+        net.bytebuddy.description.type.TypeDescription.Generic superClass = type.getSuperClass();
+        while (superClass != null) {
+            String superName = superClass.asErasure().getName();
+            if ("java.lang.Object".equals(superName)) break;
+            if (superPattern.equals(superName)) return true;
+            // 각 슈퍼클래스가 구현한 인터페이스 확인
+            for (net.bytebuddy.description.type.TypeDescription.Generic iface
+                    : superClass.asErasure().getInterfaces()) {
+                if (superPattern.equals(iface.asErasure().getName())) return true;
+            }
+            superClass = superClass.asErasure().getSuperClass();
+        }
+        // 현재 클래스가 직접 구현한 인터페이스 확인
+        for (net.bytebuddy.description.type.TypeDescription.Generic iface : type.getInterfaces()) {
+            if (superPattern.equals(iface.asErasure().getName())) return true;
+        }
+        return false;
     }
 }
