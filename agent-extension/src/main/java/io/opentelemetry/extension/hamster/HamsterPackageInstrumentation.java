@@ -153,26 +153,13 @@ public class HamsterPackageInstrumentation implements TypeInstrumentation {
     /**
      * ByteBuddy TypeDescription 을 통해 타입 계층을 탐색하여
      * 해당 클래스가 superPattern 을 상속·구현하는지 확인한다.
-     * Class.forName() 없이 bytecode descriptor 레벨에서 동작한다.
+     *
+     * ByteBuddy 의 hasSuperType 매처를 위임하여 다음을 모두 지원:
+     *   - 직접/간접 슈퍼클래스 (A → B → C 체인 전체)
+     *   - 직접/간접 인터페이스 (interface-of-interface 포함)
+     *   - Class.forName() 없이 bytecode descriptor 레벨에서 동작
      */
     private static boolean typeExtendsPattern(String superPattern, TypeDescription type) {
-        // 슈퍼클래스 체인 탐색
-        net.bytebuddy.description.type.TypeDescription.Generic superClass = type.getSuperClass();
-        while (superClass != null) {
-            String superName = superClass.asErasure().getName();
-            if ("java.lang.Object".equals(superName)) break;
-            if (superPattern.equals(superName)) return true;
-            // 각 슈퍼클래스가 구현한 인터페이스 확인
-            for (net.bytebuddy.description.type.TypeDescription.Generic iface
-                    : superClass.asErasure().getInterfaces()) {
-                if (superPattern.equals(iface.asErasure().getName())) return true;
-            }
-            superClass = superClass.asErasure().getSuperClass();
-        }
-        // 현재 클래스가 직접 구현한 인터페이스 확인
-        for (net.bytebuddy.description.type.TypeDescription.Generic iface : type.getInterfaces()) {
-            if (superPattern.equals(iface.asErasure().getName())) return true;
-        }
-        return false;
+        return ElementMatchers.hasSuperType(ElementMatchers.named(superPattern)).matches(type);
     }
 }

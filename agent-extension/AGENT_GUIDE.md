@@ -93,10 +93,35 @@ extends:javax.servlet.http.HttpServlet[doGet,doPost,service,_jspService]
 
 | 상황 | 설정 예시 |
 |------|-----------|
-| 커스텀 서블릿 전체 | `extends:javax.servlet.http.HttpServlet[doGet,doPost,service]` |
-| JSP 본문 실행 포함 | `extends:javax.servlet.http.HttpServlet[doGet,doPost,service,_jspService]` |
+| 커스텀 서블릿 + JSP 전체 | `extends:javax.servlet.http.HttpServlet[service,doGet,doPost,doPut,doDelete,_jspService]` |
+| 서블릿 필터 체인 | `extends:javax.servlet.Filter[doFilter]` |
 | JEUS/Jasper JSP 베이스 | `extends:org.apache.jasper.runtime.HttpJspBase[_jspService]` |
+| JSP 커스텀 태그 | `extends:javax.servlet.jsp.tagext.Tag[doStartTag,doEndTag]` |
 | 커스텀 인터페이스 구현체 전체 | `extends:com.example.common.BusinessHandler[execute]` |
+
+#### 스팬 이름 자동 포맷팅
+
+JSP·Servlet·Filter 메서드로 판별되면 스팬 이름이 자동으로 읽기 좋게 포맷팅됩니다:
+
+| 메서드 | 스팬 이름 예시 | `code.hamster.kind` |
+|--------|----------------|---------------------|
+| `_jspService` | `JSP order_list_jsp` | `jsp` |
+| `service` / `doGet` / `doPost` / `doPut` / `doDelete` | `Servlet OrderServlet.doPost` | `servlet` |
+| `doFilter` | `Filter AuthFilter.doFilter` | `filter` |
+| 기타 | `OrderService.process` | (없음) |
+
+모든 스팬에는 `code.namespace` (FQCN), `code.function` (메서드명) 속성이 포함됩니다.
+
+#### 웹 요청 콜 트리 예시
+
+```
+[GET /order/list.jsp]                         ← OTel HTTP 자동 계측
+  └── [Filter AuthFilter.doFilter]            ← extends:Filter
+        └── [Filter LoggingFilter.doFilter]   ← 다음 필터
+              └── [JSP order_list_jsp]        ← extends:HttpServlet (_jspService)
+                    ├── [OrderService.findActiveOrders]  ← hamster-methods.conf
+                    └── [OrderDao.findByStatus]          ← hamster-methods.conf
+```
 
 > **JSP 콜 트리 확인 방법**: `_jspService`는 JSP가 컴파일된 서블릿의 본문 실행 메서드입니다.
 > 이 메서드를 후킹하면 JSP 호출 스팬 아래에 JSP 내부에서 호출된 비즈니스 메서드들이
