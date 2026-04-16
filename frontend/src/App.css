@@ -325,33 +325,37 @@ body {
 }
 
 .card-title {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-muted);
-  margin-bottom: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
+  margin-bottom: 8px;
+  letter-spacing: 0.03em;
 }
 
 .stat-value {
-  font-size: 30px;
+  font-size: 24px;
   font-weight: 700;
   color: var(--text-primary);
-  letter-spacing: -0.5px;
+  letter-spacing: -0.3px;
   font-variant-numeric: tabular-nums;
 }
 
 .stat-unit {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--text-muted);
-  margin-left: 4px;
+  margin-left: 3px;
 }
 
 /* ── 그리드 ────────────────────────────────────────────────────── */
 .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
 .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+
+/* 그리드 내 카드는 gap으로 간격 관리 — 기본 margin-bottom 비활성 */
+.grid-2 > .card,
+.grid-3 > .card,
+.grid-4 > .card { margin-bottom: 0; }
 
 /* ── 배지 ──────────────────────────────────────────────────────── */
 .badge {

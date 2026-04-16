@@ -4,7 +4,7 @@ import type { ScatterPoint } from '../../types/dashboard';
 import { rtColor, stripMethod } from '../../utils/dashboardColors';
 
 const PAD = { top: 8, right: 16, bottom: 28, left: 56 };
-const SVG_H = 220;
+const SVG_H = 300;
 
 export default function ScatterTransactionChart({
   data, selectedTraceId, onDotClick, hideService,

@@ -411,8 +411,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── 상단 요약 카드 (5개) ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 16 }}>
+      {/* ── 상단 요약 카드 (5개, 반응형) ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginBottom: 16 }}>
         <StatCard
           title={level === 'service' ? '서비스' : '인스턴스'}
           value={level === 'service' ? (overview?.services_count ?? '—') : (instances?.length ?? '—')}
@@ -455,7 +455,7 @@ export default function Dashboard() {
       )}
 
       {/* ── 1행: TPS 차트(좌) + 실시간 활성 거래(우) ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16, alignItems: 'stretch' }}>
         <MiniTimeChart
           title="TPS (초당 트랜잭션)"
           data={rateData ?? []}
@@ -497,7 +497,7 @@ export default function Dashboard() {
       )}
 
       {/* ── 3행: 느린 엔드포인트(좌) + 최근 에러(우) ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16, alignItems: 'stretch' }}>
         {/* Top 엔드포인트 */}
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: '12px 16px 10px', borderBottom: '1px solid #2d3148' }}>
@@ -506,7 +506,7 @@ export default function Dashboard() {
           {!topEndpoints?.length ? (
             <p style={{ padding: '16px', color: '#475569', fontSize: 13 }}>데이터 없음</p>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ color: '#64748b', borderBottom: '1px solid #2d3148' }}>
                   <th style={thS}>엔드포인트</th>
@@ -518,8 +518,8 @@ export default function Dashboard() {
               <tbody>
                 {topEndpoints.map((ep, i) => (
                   <tr key={i} style={{ borderBottom: '1px solid #1e2035' }}>
-                    <td style={{ ...tdS, maxWidth: 200 }}>
-                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#e2e8f0' }}>
+                    <td style={{ ...tdS }}>
+                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#e2e8f0', maxWidth: '40vw' }}>
                         {stripMethod(ep.name)}
                       </div>
                       {!service && defaultLevel !== 'instance' && (

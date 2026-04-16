@@ -49,7 +49,7 @@ export default function StatCard({ title, value, unit, sub, color, anomaly }: Pr
       }} />
 
       {/* 헤더 */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
         <div className="card-title" style={{ marginBottom: 0 }}>{title}</div>
         {isAnomaly && (
           <span style={{
