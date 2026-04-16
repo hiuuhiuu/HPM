@@ -146,9 +146,7 @@ else
   cp "${PROJECT_DIR}/agent-extension/hamster-methods.conf"        "${WORK_DIR}/agent/"
 fi
 
-info "실시간 스택 분석 에이전트 수집 중..."
-cp "${SCRIPT_DIR}/thread-dump-agent.sh" "${WORK_DIR}/scripts/"
-chmod +x "${WORK_DIR}/scripts/thread-dump-agent.sh"
+info "스레드 덤프 기능: 올인원 에이전트 내장 (별도 스크립트 불필요)"
 
 success "구성 파일 및 에이전트 수집 완료"
 

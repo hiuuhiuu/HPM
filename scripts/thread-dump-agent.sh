@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # ============================================================
-#  APM Thread Dump Companion Agent
-#  JEUS 서버에서 백그라운드 실행하여 APM의 스레드 덤프 수집 요청에 응답
+#  [DEPRECATED] APM Thread Dump Companion Agent
+#
+#  ⚠ 이 스크립트는 더 이상 필요하지 않습니다.
+#  hamster-agent.jar 올인원 에이전트에 스레드 덤프 기능이 내장되어 있습니다.
+#  (HamsterThreadDumpExtension — 20초 폴링, JMX ThreadMXBean 기반)
+#
+#  이 스크립트는 에이전트를 사용할 수 없는 특수 환경에서의 폴백용으로만 유지됩니다.
 #
 #  환경변수:
 #    APM_URL       - APM 서버 URL  (기본: http://localhost:8080)
