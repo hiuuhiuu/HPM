@@ -5,11 +5,12 @@ APM에서 "실제 비즈니스 가시성"에는 기여하지 않으면서 트레
 슬로우 쿼리·에러 통계를 오염시키는 전형적 스팬들을 기본 차단한다.
 
 카테고리:
-- quartz       : Quartz 스케줄러 자체 + QRTZ_* 테이블 폴링
-- actuator     : Spring Boot Actuator 엔드포인트 (/actuator/*)
-- healthcheck  : K8s/LB 헬스체크 (/health, /healthz, /readyz, /livez, /ping, /status)
-- favicon      : /favicon.ico
-- metrics_scrape: Prometheus scrape (/metrics, /prometheus)
+- quartz               : Quartz 스케줄러 자체 + QRTZ_* 테이블 폴링
+- actuator             : Spring Boot Actuator 엔드포인트 (/actuator/*)
+- healthcheck          : K8s/LB 헬스체크 (/health, /healthz, /readyz, /livez, /ping, /status)
+- favicon              : /favicon.ico
+- metrics_scrape       : Prometheus scrape (/metrics, /prometheus)
+- connection_validation: JDBC 커넥션 풀 검증 쿼리 (SELECT 1, SELECT 1 FROM DUAL 등)
 
 토글:
 - 전체 비활성 : FILTER_NOISY_SPANS=false
@@ -32,11 +33,12 @@ _ENABLED = _enabled("FILTER_NOISY_SPANS")
 
 # 카테고리별 on/off
 _CATEGORIES = {
-    "quartz":         _enabled("FILTER_QUARTZ"),
-    "actuator":       _enabled("FILTER_ACTUATOR"),
-    "healthcheck":    _enabled("FILTER_HEALTHCHECK"),
-    "favicon":        _enabled("FILTER_FAVICON"),
-    "metrics_scrape": _enabled("FILTER_METRICS_SCRAPE"),
+    "quartz":                _enabled("FILTER_QUARTZ"),
+    "actuator":              _enabled("FILTER_ACTUATOR"),
+    "healthcheck":           _enabled("FILTER_HEALTHCHECK"),
+    "favicon":               _enabled("FILTER_FAVICON"),
+    "metrics_scrape":        _enabled("FILTER_METRICS_SCRAPE"),
+    "connection_validation": _enabled("FILTER_CONNECTION_VALIDATION"),
 }
 
 
@@ -139,6 +141,47 @@ def _is_metrics_scrape(name: Optional[str], attrs: Dict) -> bool:
     return False
 
 
+# ── JDBC 커넥션 풀 검증 쿼리 ───────────────────────────────────
+# 대부분의 커넥션 풀(Hikari·DBCP·Tomcat JDBC 등)이 healthcheck로 사용하는
+# 고정 쿼리들. 실제 비즈니스 쿼리일 확률이 극히 낮아 기본 차단한다.
+# 주석(/* ping */)·공백·대소문자·세미콜론 차이를 흡수하기 위해 정규화 후 비교.
+_VALIDATION_QUERIES = frozenset({
+    "select 1",
+    "select 1 from dual",                      # Oracle
+    "select 1 from sysibm.sysdummy1",          # DB2
+    "select 'x'",                              # 구형 JDBC 검증
+    "select 'x' from dual",
+    "values 1",                                # Derby·DB2
+    "values(1)",
+    "select version()",                        # MySQL/Postgres 기본
+    "select @@version",                        # SQL Server
+    "select getdate()",                        # SQL Server 헬스체크
+    "select current_timestamp",
+    "select now()",
+})
+
+# 주석(/* ping */) + whitespace 제거용
+_SQL_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+_SQL_LINE_COMMENT_RE = re.compile(r"--[^\n]*")
+
+
+def _normalize_sql(stmt: str) -> str:
+    s = _SQL_COMMENT_RE.sub("", stmt)
+    s = _SQL_LINE_COMMENT_RE.sub("", s)
+    s = s.strip().rstrip(";").strip()
+    # 연속 공백을 단일 공백으로
+    s = re.sub(r"\s+", " ", s)
+    return s.lower()
+
+
+def _is_connection_validation(name: Optional[str], attrs: Dict) -> bool:
+    stmt = attrs.get("db.statement")
+    if not isinstance(stmt, str) or not stmt:
+        return False
+    norm = _normalize_sql(stmt)
+    return norm in _VALIDATION_QUERIES
+
+
 # ── 공개 진입점 ────────────────────────────────────────────────
 def is_noisy_span(name: Optional[str], attrs: Optional[Dict]) -> bool:
     """해당 스팬을 저장에서 제외할지 판단."""
@@ -146,11 +189,12 @@ def is_noisy_span(name: Optional[str], attrs: Optional[Dict]) -> bool:
         return False
     a = attrs or {}
 
-    if _CATEGORIES["quartz"]         and _is_quartz(name, a):         return True
-    if _CATEGORIES["actuator"]       and _is_actuator(name, a):       return True
-    if _CATEGORIES["healthcheck"]    and _is_healthcheck(name, a):    return True
-    if _CATEGORIES["favicon"]        and _is_favicon(name, a):        return True
-    if _CATEGORIES["metrics_scrape"] and _is_metrics_scrape(name, a): return True
+    if _CATEGORIES["quartz"]                and _is_quartz(name, a):                return True
+    if _CATEGORIES["actuator"]              and _is_actuator(name, a):              return True
+    if _CATEGORIES["healthcheck"]           and _is_healthcheck(name, a):           return True
+    if _CATEGORIES["favicon"]               and _is_favicon(name, a):               return True
+    if _CATEGORIES["metrics_scrape"]        and _is_metrics_scrape(name, a):        return True
+    if _CATEGORIES["connection_validation"] and _is_connection_validation(name, a): return True
     return False
 
 

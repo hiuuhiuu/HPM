@@ -106,6 +106,55 @@ class TestUrlParsing:
         )
 
 
+# ── 커넥션 풀 검증 쿼리 ────────────────────────────────────────
+class TestConnectionValidation:
+    def test_select_1(self):
+        assert is_noisy_span("SELECT", {"db.statement": "SELECT 1"})
+
+    def test_select_1_case_insensitive(self):
+        assert is_noisy_span("select", {"db.statement": "select 1"})
+        assert is_noisy_span("Select", {"db.statement": "Select 1"})
+
+    def test_select_1_with_semicolon(self):
+        assert is_noisy_span("SELECT", {"db.statement": "SELECT 1;"})
+
+    def test_select_1_with_whitespace(self):
+        assert is_noisy_span("SELECT", {"db.statement": "  SELECT  1  "})
+
+    def test_select_1_with_block_comment(self):
+        assert is_noisy_span("SELECT", {"db.statement": "/* ping */ SELECT 1"})
+
+    def test_select_1_with_line_comment(self):
+        assert is_noisy_span("SELECT", {"db.statement": "-- health check\nSELECT 1"})
+
+    def test_select_1_from_dual_oracle(self):
+        assert is_noisy_span("SELECT", {"db.statement": "SELECT 1 FROM DUAL"})
+
+    def test_select_1_from_sysibm_db2(self):
+        assert is_noisy_span("SELECT", {"db.statement": "SELECT 1 FROM SYSIBM.SYSDUMMY1"})
+
+    def test_select_x_quoted(self):
+        assert is_noisy_span("SELECT", {"db.statement": "SELECT 'x'"})
+
+    def test_values_1_derby(self):
+        assert is_noisy_span("VALUES", {"db.statement": "VALUES 1"})
+
+    def test_select_version_mysql(self):
+        assert is_noisy_span("SELECT", {"db.statement": "SELECT VERSION()"})
+
+    def test_select_current_timestamp(self):
+        assert is_noisy_span("SELECT", {"db.statement": "SELECT CURRENT_TIMESTAMP"})
+
+    def test_business_select_not_matched(self):
+        assert not is_noisy_span("SELECT", {"db.statement": "SELECT 1 FROM users WHERE id = ?"})
+
+    def test_select_constant_in_business_query_not_matched(self):
+        assert not is_noisy_span("SELECT", {"db.statement": "SELECT 1, name FROM users"})
+
+    def test_no_statement_not_matched(self):
+        assert not is_noisy_span("SELECT", {})
+
+
 # ── env 토글 ───────────────────────────────────────────────────
 class TestEnvToggles:
     def test_full_disable(self, monkeypatch):

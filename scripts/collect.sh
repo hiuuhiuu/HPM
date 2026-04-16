@@ -7,6 +7,7 @@
 #  사용법:
 #    ./scripts/collect.sh              # 빌드 → 폐쇄망 테스트 → 패키지 생성
 #    ./scripts/collect.sh --skip-test  # 테스트 생략 (빠른 반복 개발용)
+#    ./scripts/collect.sh --no-agent   # 에이전트 빌드·포함 생략 (에이전트 변경이 없을 때)
 #
 #  흐름:
 #    이미지 빌드 → 파일 수집 → 폐쇄망 시뮬레이션 테스트
@@ -25,14 +26,17 @@ step()    { echo -e "\n${BOLD}── $* ${NC}"; }
 
 # ── 인자 파싱 ────────────────────────────────────────────
 SKIP_TEST=false
+NO_AGENT=false
 for arg in "$@"; do
   case "${arg}" in
     --skip-test) SKIP_TEST=true ;;
+    --no-agent)  NO_AGENT=true ;;
     --help|-h)
-      echo "사용법: $0 [--skip-test]"
+      echo "사용법: $0 [--skip-test] [--no-agent]"
       echo ""
-      echo "  (기본)      빌드 → 폐쇄망 테스트 → 패키지 생성"
+      echo "  (기본)      빌드 → 폐쇄망 테스트 → 패키지 생성 (에이전트 포함)"
       echo "  --skip-test 폐쇄망 테스트 생략 (빠른 반복 개발 시)"
+      echo "  --no-agent  에이전트 빌드·포함 생략 (에이전트 변경 없을 때 증분 패키지용)"
       exit 0
       ;;
   esac
@@ -54,6 +58,7 @@ echo ""
 echo "============================================================"
 echo -e "  ${BOLD}APM 설치 패키지 수집 스크립트${NC}"
 [ "${SKIP_TEST}" = true ] && echo -e "  ${YELLOW}[!] 폐쇄망 테스트 생략 모드${NC}"
+[ "${NO_AGENT}" = true ]  && echo -e "  ${YELLOW}[!] 에이전트 빌드·포함 생략 모드${NC}"
 echo "============================================================"
 echo ""
 
@@ -110,6 +115,13 @@ cp -r "${PROJECT_DIR}/docker/"              "${WORK_DIR}/docker/"
 cp "${SCRIPT_DIR}/install.sh"               "${WORK_DIR}/"
 chmod +x "${WORK_DIR}/install.sh"
 
+# 최신 업그레이드 가이드(있는 경우) 포함
+if ls "${PROJECT_DIR}/docs/UPGRADE_GUIDE_"*.md &>/dev/null; then
+  LATEST_GUIDE=$(ls -t "${PROJECT_DIR}/docs/UPGRADE_GUIDE_"*.md | head -n1)
+  cp "${LATEST_GUIDE}" "${WORK_DIR}/UPGRADE_GUIDE.md"
+  info "업그레이드 가이드 포함: $(basename "${LATEST_GUIDE}") → UPGRADE_GUIDE.md"
+fi
+
 cat > "${WORK_DIR}/VERSION" <<EOF
 APM_VERSION=${APM_VERSION}
 OTEL_AGENT_VERSION=${OTEL_AGENT_VERSION}
@@ -117,19 +129,26 @@ BUILD_DATE=$(date '+%Y-%m-%d %H:%M:%S')
 BUILD_HOST=$(hostname)
 EOF
 
-info "통합 햄스터 에이전트(Single JAR) 빌드 중... (OTel agent + Hamster 확장 포함, 수분 소요)"
-bash "${PROJECT_DIR}/agent-extension/build-extension.sh" || error "에이전트 빌드 실패"
-cp "${PROJECT_DIR}/agent-extension/dist/${HAMSTER_AGENT}" "${WORK_DIR}/agent/" \
-  || error "agent-extension/dist/${HAMSTER_AGENT} 가 없습니다. 빌드 로그를 확인하세요."
+if [ "${NO_AGENT}" = true ]; then
+  warn "에이전트 빌드·포함 생략 (--no-agent)"
+  warn "이미 설치된 hamster-agent.jar를 그대로 사용합니다."
+  # 에이전트 디렉토리 자체를 비워두면 install.sh가 \"파일이 없습니다\" 경고 후 스킵
+  rmdir "${WORK_DIR}/agent" 2>/dev/null || true
+else
+  info "통합 햄스터 에이전트(Single JAR) 빌드 중... (OTel agent + Hamster 확장 포함, 수분 소요)"
+  bash "${PROJECT_DIR}/agent-extension/build-extension.sh" || error "에이전트 빌드 실패"
+  cp "${PROJECT_DIR}/agent-extension/dist/${HAMSTER_AGENT}" "${WORK_DIR}/agent/" \
+    || error "agent-extension/dist/${HAMSTER_AGENT} 가 없습니다. 빌드 로그를 확인하세요."
+
+  info "설치 가이드 및 메서드 설정 샘플 생성 중..."
+  cp "${PROJECT_DIR}/agent-extension/AGENT_GUIDE.md" "${WORK_DIR}/AGENT_INSTALL_GUIDE.md"
+  cp "${PROJECT_DIR}/agent-extension/hamster-methods.conf.sample" "${WORK_DIR}/agent/"
+  cp "${PROJECT_DIR}/agent-extension/hamster-methods.conf"        "${WORK_DIR}/agent/"
+fi
 
 info "실시간 스택 분석 에이전트 수집 중..."
 cp "${SCRIPT_DIR}/thread-dump-agent.sh" "${WORK_DIR}/scripts/"
 chmod +x "${WORK_DIR}/scripts/thread-dump-agent.sh"
-
-info "설치 가이드 및 메서드 설정 샘플 생성 중..."
-cp "${PROJECT_DIR}/agent-extension/AGENT_GUIDE.md" "${WORK_DIR}/AGENT_INSTALL_GUIDE.md"
-cp "${PROJECT_DIR}/agent-extension/hamster-methods.conf.sample" "${WORK_DIR}/agent/"
-cp "${PROJECT_DIR}/agent-extension/hamster-methods.conf"        "${WORK_DIR}/agent/"
 
 success "구성 파일 및 에이전트 수집 완료"
 
@@ -160,9 +179,13 @@ fi
 
 step "Step 5/5: 통합 에이전트 확인"
 
-# Maven shade (pom.xml) 가 OTel agent + Hamster 클래스 + SPI 를 이미 병합했으므로
-# 별도 다운로드·수동 병합 불필요. Step 3 에서 복사한 파일을 그대로 사용한다.
-success "통합 에이전트 확인 완료: ${HAMSTER_AGENT} ($(du -sh "${WORK_DIR}/agent/${HAMSTER_AGENT}" | cut -f1))"
+if [ "${NO_AGENT}" = true ]; then
+  warn "에이전트 포함 생략 모드 — hamster-agent.jar 확인 건너뜀"
+else
+  # Maven shade (pom.xml) 가 OTel agent + Hamster 클래스 + SPI 를 이미 병합했으므로
+  # 별도 다운로드·수동 병합 불필요. Step 3 에서 복사한 파일을 그대로 사용한다.
+  success "통합 에이전트 확인 완료: ${HAMSTER_AGENT} ($(du -sh "${WORK_DIR}/agent/${HAMSTER_AGENT}" | cut -f1))"
+fi
 
 # ── 최종 패키지 생성 ─────────────────────────────────────
 echo ""
