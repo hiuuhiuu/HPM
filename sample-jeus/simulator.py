@@ -314,6 +314,57 @@ def _handle_health(_is_err: bool, total_ms: int):
 
 
 # 엔드포인트 → (HTTP 메서드, 경로, 최소ms, 최대ms, 에러율, 핸들러)
+def _handle_batch_order(is_err: bool, total_ms: int):
+    """대량 주문 일괄 처리 — 5~12초 소요, DB Lock 경합 시뮬레이션"""
+    with method_span("com.example.controller.OrderController", "batchCreateOrders"):
+        with method_span("com.example.service.OrderService", "processBatch"):
+            batch_size = random.randint(50, 200)
+            chunk_ms = total_ms // max(batch_size // 10, 1)
+            for i in range(min(batch_size // 10, 8)):
+                with method_span("com.example.dao.OrderDao", "insertBatch",
+                                 {"batch.chunk": str(i), "batch.size": str(batch_size)}):
+                    with tracer.start_as_current_span(
+                        "INSERT batch orders", kind=SpanKind.CLIENT,
+                        attributes={"db.system": "postgresql", "db.statement": "INSERT INTO orders ..."}
+                    ):
+                        time.sleep(chunk_ms / 1000)
+                        if is_err and i == batch_size // 20:
+                            raise RuntimeError("java.sql.BatchUpdateException: Deadlock detected")
+
+
+def _handle_report_export(is_err: bool, total_ms: int):
+    """리포트 생성/내보내기 — 8~20초 소요"""
+    with method_span("com.example.controller.OrderController", "exportReport"):
+        with method_span("com.example.service.OrderService", "generateReport"):
+            time.sleep(total_ms * 0.3 / 1000)
+            with method_span("com.example.service.OrderService", "aggregateData"):
+                with tracer.start_as_current_span(
+                    "SELECT aggregate report", kind=SpanKind.CLIENT,
+                    attributes={"db.system": "postgresql",
+                                "db.statement": "SELECT ... GROUP BY ... HAVING ..."}
+                ):
+                    time.sleep(total_ms * 0.4 / 1000)
+            with method_span("com.example.service.NotificationService", "sendConfirm"):
+                time.sleep(total_ms * 0.2 / 1000)
+            time.sleep(total_ms * 0.1 / 1000)
+
+
+def _handle_external_sync(is_err: bool, total_ms: int):
+    """외부 시스템 동기화 — 3~8초 소요, 외부 API 응답 대기"""
+    with method_span("com.example.controller.CustomerController", "syncExternal"):
+        with method_span("com.example.service.CustomerService", "fetchFromExternal"):
+            with tracer.start_as_current_span(
+                "HTTP GET https://external-crm.bank.co.kr/api/sync", kind=SpanKind.CLIENT,
+                attributes={"http.method": "GET",
+                             "http.url": "https://external-crm.bank.co.kr/api/sync",
+                             "net.peer.name": "external-crm.bank.co.kr"}
+            ):
+                time.sleep(total_ms * 0.7 / 1000)
+                if is_err:
+                    raise RuntimeError("java.net.SocketTimeoutException: Read timed out")
+            time.sleep(total_ms * 0.3 / 1000)
+
+
 ENDPOINTS = [
     ("GET",  "/api/orders",           120, 300, 0.05, _handle_get_orders),
     ("GET",  "/api/orders/{id}",       60, 150, 0.03, _handle_get_order),
@@ -322,7 +373,59 @@ ENDPOINTS = [
     ("GET",  "/api/customers/{id}",    40, 120, 0.02, _handle_get_customer),
     ("GET",  "/api/products",          30, 100, 0.01, _handle_get_products),
     ("GET",  "/api/health",             5,  20, 0.00, _handle_health),
+    # 느린 거래 (활성 거래 패널 확인용)
+    ("POST", "/api/orders/batch",    5000,12000, 0.10, _handle_batch_order),
+    ("GET",  "/api/reports/export",  8000,20000, 0.05, _handle_report_export),
+    ("POST", "/api/customers/sync",  3000, 8000, 0.15, _handle_external_sync),
 ]
+
+
+# ── 활성 거래 비콘 (에이전트 동작 시뮬레이션) ───────────────
+_active_txns_lock = threading.Lock()
+_active_txns: dict = {}  # span_name → {"trace_id", "span_name", "started_at", "start_ms"}
+
+def _register_active(span_name: str, trace_id: str):
+    with _active_txns_lock:
+        _active_txns[span_name + trace_id] = {
+            "trace_id": trace_id,
+            "span_name": span_name,
+            "started_at": datetime.utcnow().isoformat() + "Z",
+            "start_ms": time.time() * 1000,
+        }
+
+def _unregister_active(span_name: str, trace_id: str):
+    with _active_txns_lock:
+        _active_txns.pop(span_name + trace_id, None)
+
+def _beacon_loop():
+    """3초마다 현재 활성 거래를 APM 서버에 비콘 전송"""
+    beacon_url = OTLP.replace("/otlp", "") + "/api/dashboard/active-transactions/beacon"
+    log.info(f"활성 거래 비콘 시작 → {beacon_url}")
+    while True:
+        time.sleep(3)
+        try:
+            now_ms = time.time() * 1000
+            with _active_txns_lock:
+                txns = [
+                    {
+                        "trace_id": v["trace_id"],
+                        "span_name": v["span_name"],
+                        "duration_ms": round(now_ms - v["start_ms"], 1),
+                        "status": "OK",
+                        "started_at": v["started_at"],
+                    }
+                    for v in _active_txns.values()
+                ]
+            payload = json.dumps({"service": SVC, "instance": INST, "transactions": txns})
+            req = urllib.request.Request(
+                beacon_url,
+                data=payload.encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=3)
+        except Exception:
+            pass
 
 
 def _simulate_request():
@@ -330,8 +433,9 @@ def _simulate_request():
     is_err   = random.random() < err_rate
     total_ms = int(random.randint(lo, hi) * (1.8 if is_err else 1.0))
 
+    span_label = f"{method} {path}"
     with tracer.start_as_current_span(
-        f"{method} {path}",
+        span_label,
         kind=SpanKind.SERVER,
         attributes={
             "http.method":      method,
@@ -343,6 +447,9 @@ def _simulate_request():
             "net.host.port":    8180,
         },
     ) as root:
+        trace_id = root.get_span_context().trace_id
+        trace_id_hex = format(trace_id, '032x')
+        _register_active(span_label, trace_id_hex)
         try:
             handler(is_err, total_ms)
         except RuntimeError as e:
@@ -354,9 +461,12 @@ def _simulate_request():
                 "exception.message": f"Request processing failed; nested exception is {e}",
             })
             log.warning(f"ERROR  {method:4} {path} ({total_ms}ms)")
+            _unregister_active(span_label, trace_id_hex)
             return
         except Exception:
             pass
+        finally:
+            _unregister_active(span_label, trace_id_hex)
 
         if is_err:
             root.set_status(StatusCode.ERROR, "Internal Server Error")
@@ -747,6 +857,7 @@ if __name__ == "__main__":
     threading.Thread(target=_traffic_loop,  daemon=True).start()
     threading.Thread(target=_topology_loop, daemon=True).start()
     threading.Thread(target=_dump_loop,     daemon=True).start()
+    threading.Thread(target=_beacon_loop,   daemon=True).start()
 
     while True:
         time.sleep(60)

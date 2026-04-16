@@ -1,8 +1,10 @@
-from typing import Literal, Optional, Union
+from typing import List, Literal, Optional, Union
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core import active_transactions
 from app.services import dashboard_service
 
 router = APIRouter(prefix="/api/dashboard")
@@ -91,6 +93,32 @@ async def get_topology(
 
 
 @router.get("/active-summary")
-async def active_summary(db: AsyncSession = Depends(get_db)):
-    """현재 실시간 활성 스레드(수행 중인 요청) 요약"""
-    return await dashboard_service.get_active_summary(db)
+async def active_summary():
+    """에이전트 비콘 기반 현재 활성 거래 요약"""
+    return active_transactions.get_active_summary()
+
+
+class ActiveTransactionItem(BaseModel):
+    trace_id:   str
+    span_name:  str
+    duration_ms: float
+    status:     str = "OK"
+    started_at: Optional[str] = None
+
+
+class BeaconPayload(BaseModel):
+    service:      str
+    instance:     str
+    transactions: List[ActiveTransactionItem] = Field(default_factory=list)
+
+
+@router.post("/active-transactions/beacon")
+async def receive_beacon(payload: BeaconPayload):
+    """에이전트가 주기적으로 보내는 활성 거래 비콘.
+    에이전트는 현재 처리 중인 root SERVER 스팬 목록을 3초 주기로 전송한다."""
+    active_transactions.receive_beacon(
+        service=payload.service,
+        instance=payload.instance,
+        transactions=[t.model_dump() for t in payload.transactions],
+    )
+    return {"status": "ok"}

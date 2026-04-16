@@ -20,12 +20,21 @@ public class HamsterExtensionCustomizer implements AutoConfigurationCustomizerPr
 
     private static final Logger logger = Logger.getLogger(HamsterExtensionCustomizer.class.getName());
 
+    private ActiveTransactionBeaconProcessor beaconProcessor;
+
     @Override
     public void customize(AutoConfigurationCustomizer autoConfigurationCustomizer) {
         autoConfigurationCustomizer.addPropertiesCustomizer(this::buildProperties);
-        // HTTP 서버 스팬명 개선: "GET /*" → "GET /actual/path"
+        // HTTP 서버 ��팬명 개선: "GET /*" → "GET /actual/path"
+        // 활성 거래 비콘: root SERVER 스팬 추적 + 3초 주기 전송
         autoConfigurationCustomizer.addTracerProviderCustomizer(
-                (builder, config) -> builder.addSpanProcessor(new SpanNameEnrichmentProcessor()));
+                (builder, config) -> {
+                    builder.addSpanProcessor(new SpanNameEnrichmentProcessor());
+                    if (beaconProcessor != null) {
+                        builder.addSpanProcessor(beaconProcessor);
+                    }
+                    return builder;
+                });
         // 최소 duration 필터링 — hamster-methods.conf 의 min_span_duration_ms 값 사용
         // JVM 옵션 없이 설정 파일 + 대시보드 폴링으로 동적 제어
         autoConfigurationCustomizer.addSpanExporterCustomizer((exporter, config) -> {
@@ -63,6 +72,10 @@ public class HamsterExtensionCustomizer implements AutoConfigurationCustomizerPr
 
         // ── 3. 스레드 덤프 폴러 시작 ─────────────────────────────────────────
         new HamsterThreadDumpExtension(backendUrl, instanceId).start();
+
+        // ── 3-1. 활성 거래 비콘 시작 ─────────────────────────────────
+        beaconProcessor = new ActiveTransactionBeaconProcessor(backendUrl, serviceName, instanceId);
+        beaconProcessor.startBeacon();
 
         // ── 4. 정확한 메서드 항목만 otel.instrumentation.methods.include 에 등록 ──
         Map<String, String> extraProps = new HashMap<>();
