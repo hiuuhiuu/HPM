@@ -75,6 +75,29 @@
                         </goals>
                         <configuration>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <!--
+                              Hamster 확장이 참조하는 OTel API/Context 패키지는 올인원 agent JAR
+                              안에 shaded 경로(io.opentelemetry.javaagent.shaded.*)로만 존재한다.
+                              별도 extension JAR (-Dotel.javaagent.extensions=...) 로 로드될 때는
+                              ExtensionClassLoader 가 자동으로 재작성하지만, JAR 내부에 포함된 경우
+                              그 자동 재작성이 없어 ClassNotFoundException 이 발생한다.
+                              shade relocation 으로 바이트코드 참조를 사전 재작성해 해결.
+                              (sdk / instrumentation / javaagent.* 은 inst/ 에 unshaded 로 존재하므로 제외)
+                            -->
+                            <relocations>
+                                <relocation>
+                                    <pattern>io.opentelemetry.api</pattern>
+                                    <shadedPattern>io.opentelemetry.javaagent.shaded.io.opentelemetry.api</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>io.opentelemetry.context</pattern>
+                                    <shadedPattern>io.opentelemetry.javaagent.shaded.io.opentelemetry.context</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>io.opentelemetry.semconv</pattern>
+                                    <shadedPattern>io.opentelemetry.javaagent.shaded.io.opentelemetry.semconv</shadedPattern>
+                                </relocation>
+                            </relocations>
                             <transformers>
                                 <!--
                                   핵심: META-INF/services/ 파일을 머지.
