@@ -1,50 +1,35 @@
-# Build Stage
+# ============================================================
+#  Hamster APM Agent Build
+#
+#  산출물:
+#    /out/opentelemetry-javaagent.jar  — 공식 OTel Java Agent (원본)
+#    /out/hamster-extension.jar        — Hamster 확장 (SPI + 클래스)
+#
+#  사용법 (WAS JVM 옵션):
+#    -javaagent:/waslib/opentelemetry-javaagent.jar
+#    -Dotel.javaagent.extensions=/waslib/hamster-extension.jar
+# ============================================================
+
+# ── 1단계: 확장 JAR 빌드 ──────────────────────────────────
 FROM maven:3.8.4-openjdk-8-slim AS build
 WORKDIR /app
 COPY pom.xml .
 COPY src ./src
-RUN mvn clean package -DskipTests
 
-# Repack Stage — Hamster extension 클래스를 OTel inst/ 규약으로 재배치
-# OTel AgentClassLoader는 inst/ 하위 .classdata 파일만 extension으로 인식한다.
-# maven-shade가 최상위에 놓은 Hamster 클래스를 inst/ 구조로 이동한다.
-FROM eclipse-temurin:8-jdk AS repack
-WORKDIR /repack
-COPY --from=build /app/target/hamster-agent.jar /repack/hamster-agent.jar
+# extension-only JAR (shade 없이 순수 Hamster 클래스 + SPI만 포함)
+RUN mvn clean package -DskipTests -DskipShade=true \
+    && mv target/hamster-agent.jar target/hamster-extension.jar
 
-RUN set -e \
-    && mkdir work && cd work \
-    && jar xf ../hamster-agent.jar \
-    #
-    # 1. Hamster .class → inst/ 하위 .classdata 로 이동
-    #
-    && for f in $(find io/opentelemetry/extension/hamster -name "*.class" 2>/dev/null); do \
-         target="inst/${f%.class}.classdata"; \
-         mkdir -p "$(dirname "$target")"; \
-         mv "$f" "$target"; \
-       done \
-    && rm -rf io/opentelemetry/extension/hamster \
-    #
-    # 2. inst/META-INF/services/ SPI에 Hamster 항목 추가 (줄바꿈 보장)
-    #
-    && printf '\nio.opentelemetry.extension.hamster.HamsterExtensionCustomizer\n' \
-       >> inst/META-INF/services/io.opentelemetry.sdk.autoconfigure.spi.AutoConfigurationCustomizerProvider \
-    && printf '\nio.opentelemetry.extension.hamster.HamsterInstrumentationModule\n' \
-       >> inst/META-INF/services/io.opentelemetry.javaagent.extension.instrumentation.InstrumentationModule \
-    #
-    # 3. 최상위 SPI에서 Hamster 항목 제거 (중복 방지)
-    #
-    && sed -i '/hamster/d' META-INF/services/io.opentelemetry.sdk.autoconfigure.spi.AutoConfigurationCustomizerProvider 2>/dev/null || true \
-    && sed -i '/hamster/d' META-INF/services/io.opentelemetry.javaagent.extension.instrumentation.InstrumentationModule 2>/dev/null || true \
-    #
-    # 4. 올인원 JAR 재패키징 (MANIFEST 보존)
-    #
-    && jar cf ../hamster-agent-repacked.jar -C . . \
-    && cp META-INF/MANIFEST.MF /tmp/MANIFEST.MF \
-    && jar cfm ../hamster-agent-repacked.jar /tmp/MANIFEST.MF -C . .
+# ── 2단계: 공식 OTel Agent 다운로드 ─────────────────────────
+FROM alpine:latest AS download
+ARG OTEL_VERSION=2.11.0
+RUN apk add --no-cache curl \
+    && curl -sSL -o /tmp/opentelemetry-javaagent.jar \
+       "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_VERSION}/opentelemetry-javaagent.jar"
 
-# Final Stage
+# ── 3단계: 산출물 조합 ──────────────────────────────────────
 FROM alpine:latest
 WORKDIR /dist
-COPY --from=repack /repack/hamster-agent-repacked.jar /dist/hamster-agent.jar
-CMD ["cp", "/dist/hamster-agent.jar", "/out/"]
+COPY --from=build    /app/target/hamster-extension.jar  /dist/hamster-extension.jar
+COPY --from=download /tmp/opentelemetry-javaagent.jar  /dist/opentelemetry-javaagent.jar
+CMD ["sh", "-c", "cp /dist/opentelemetry-javaagent.jar /out/ && cp /dist/hamster-extension.jar /out/"]

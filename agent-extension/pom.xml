@@ -17,7 +17,21 @@
         <!-- 런타임 agent JAR 버전 (stable) — extension API alpha 와 동일 minor -->
         <otel.agent.runtime.version>2.11.0</otel.agent.runtime.version>
         <finalName>hamster-agent</finalName>
+        <!-- 기본은 shade 실행. -DskipShade=true 시 shade 비활성 (extension-only JAR) -->
+        <shade.phase>package</shade.phase>
     </properties>
+
+    <profiles>
+        <profile>
+            <id>skip-shade</id>
+            <activation>
+                <property><name>skipShade</name><value>true</value></property>
+            </activation>
+            <properties>
+                <shade.phase>none</shade.phase>
+            </properties>
+        </profile>
+    </profiles>
 
     <dependencies>
         <!--
@@ -69,7 +83,8 @@
                 <version>3.4.1</version>
                 <executions>
                     <execution>
-                        <phase>package</phase>
+                        <!-- skipShade=true 시 shade 단계 건너뜀 (extension-only 빌드용) -->
+                        <phase>${shade.phase}</phase>
                         <goals>
                             <goal>shade</goal>
                         </goals>

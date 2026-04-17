@@ -45,9 +45,10 @@ done
 # ── 버전 설정 ────────────────────────────────────────────
 APM_VERSION="1.0"
 OTEL_AGENT_VERSION="2.11.0"
-OTEL_AGENT_URL="https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_AGENT_VERSION}/opentelemetry-javaagent.jar"
 PACKAGE_NAME="apm-installer-$(date +%Y%m%d)"
-HAMSTER_AGENT="hamster-agent.jar"
+# 에이전트 산출물: OTel 공식 agent + Hamster 확장 (분리 로드 방식)
+OTEL_AGENT_JAR="opentelemetry-javaagent.jar"
+HAMSTER_EXT_JAR="hamster-extension.jar"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -131,14 +132,16 @@ EOF
 
 if [ "${NO_AGENT}" = true ]; then
   warn "에이전트 빌드·포함 생략 (--no-agent)"
-  warn "이미 설치된 hamster-agent.jar를 그대로 사용합니다."
-  # 에이전트 디렉토리 자체를 비워두면 install.sh가 \"파일이 없습니다\" 경고 후 스킵
+  warn "이미 설치된 에이전트를 그대로 사용합니다."
   rmdir "${WORK_DIR}/agent" 2>/dev/null || true
 else
-  info "통합 햄스터 에이전트(Single JAR) 빌드 중... (OTel agent + Hamster 확장 포함, 수분 소요)"
+  info "OTel Agent + Hamster 확장 빌드 중... (수분 소요)"
   bash "${PROJECT_DIR}/agent-extension/build-extension.sh" || error "에이전트 빌드 실패"
-  cp "${PROJECT_DIR}/agent-extension/dist/${HAMSTER_AGENT}" "${WORK_DIR}/agent/" \
-    || error "agent-extension/dist/${HAMSTER_AGENT} 가 없습니다. 빌드 로그를 확인하세요."
+
+  cp "${PROJECT_DIR}/agent-extension/dist/${OTEL_AGENT_JAR}" "${WORK_DIR}/agent/" \
+    || error "${OTEL_AGENT_JAR} 가 없습니다."
+  cp "${PROJECT_DIR}/agent-extension/dist/${HAMSTER_EXT_JAR}" "${WORK_DIR}/agent/" \
+    || error "${HAMSTER_EXT_JAR} 가 없습니다."
 
   info "설치 가이드 및 메서드 설정 샘플 생성 중..."
   cp "${PROJECT_DIR}/agent-extension/AGENT_GUIDE.md" "${WORK_DIR}/AGENT_INSTALL_GUIDE.md"
@@ -178,11 +181,10 @@ fi
 step "Step 5/5: 통합 에이전트 확인"
 
 if [ "${NO_AGENT}" = true ]; then
-  warn "에이전트 포함 생략 모드 — hamster-agent.jar 확인 건너뜀"
+  warn "에이전트 포함 생략 모드"
 else
-  # Maven shade (pom.xml) 가 OTel agent + Hamster 클래스 + SPI 를 이미 병합했으므로
-  # 별도 다운로드·수동 병합 불필요. Step 3 에서 복사한 파일을 그대로 사용한다.
-  success "통합 에이전트 확인 완료: ${HAMSTER_AGENT} ($(du -sh "${WORK_DIR}/agent/${HAMSTER_AGENT}" | cut -f1))"
+  success "OTel Agent: ${OTEL_AGENT_JAR} ($(du -sh "${WORK_DIR}/agent/${OTEL_AGENT_JAR}" | cut -f1))"
+  success "Hamster 확장: ${HAMSTER_EXT_JAR} ($(du -sh "${WORK_DIR}/agent/${HAMSTER_EXT_JAR}" | cut -f1))"
 fi
 
 # ── 최종 패키지 생성 ─────────────────────────────────────

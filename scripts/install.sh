@@ -130,17 +130,24 @@ success "이미지 로드 완료"
 docker images | grep -E "timescale|apm-backend|apm-frontend" || true
 
 # ── Step 4. Hamster 통합 에이전트 배포 ───────────────────
-step "Step 4/5: Hamster 통합 에이전트 배포"
+step "Step 4/5: OTel Agent + Hamster 확장 배포"
 
-HAMSTER_JAR="${SCRIPT_DIR}/agent/hamster-agent.jar"
-if [ -f "${HAMSTER_JAR}" ]; then
-  cp "${HAMSTER_JAR}" "${AGENT_DIR}/"
-  chmod 644 "${AGENT_DIR}/hamster-agent.jar"
-  AGENT_SIZE=$(du -sh "${AGENT_DIR}/hamster-agent.jar" | cut -f1)
-  success "Hamster 통합 에이전트 배포 완료: ${AGENT_DIR}/hamster-agent.jar (${AGENT_SIZE})"
+OTEL_JAR="${SCRIPT_DIR}/agent/opentelemetry-javaagent.jar"
+EXT_JAR="${SCRIPT_DIR}/agent/hamster-extension.jar"
+
+if [ -f "${OTEL_JAR}" ] && [ -f "${EXT_JAR}" ]; then
+  cp "${OTEL_JAR}" "${AGENT_DIR}/"
+  cp "${EXT_JAR}"  "${AGENT_DIR}/"
+  chmod 644 "${AGENT_DIR}/opentelemetry-javaagent.jar" "${AGENT_DIR}/hamster-extension.jar"
+  success "OTel Agent 배포: ${AGENT_DIR}/opentelemetry-javaagent.jar ($(du -sh "${AGENT_DIR}/opentelemetry-javaagent.jar" | cut -f1))"
+  success "Hamster 확장 배포: ${AGENT_DIR}/hamster-extension.jar ($(du -sh "${AGENT_DIR}/hamster-extension.jar" | cut -f1))"
+elif [ -f "${OTEL_JAR}" ]; then
+  cp "${OTEL_JAR}" "${AGENT_DIR}/"
+  chmod 644 "${AGENT_DIR}/opentelemetry-javaagent.jar"
+  warn "hamster-extension.jar 없음 — OTel Agent만 배포합니다."
 else
-  warn "hamster-agent.jar 파일이 없습니다 — 에이전트 배포를 건너뜁니다: ${HAMSTER_JAR}"
-  warn "나중에 수동으로 복사: cp hamster-agent.jar ${AGENT_DIR}/"
+  warn "에이전트 파일이 없습니다 — 에이전트 배포를 건너뜁니다."
+  warn "나중에 수동 복사: opentelemetry-javaagent.jar + hamster-extension.jar → ${AGENT_DIR}/"
 fi
 
 # 메서드 후킹 설정 파일 배포 (이미 존재하면 덮어쓰지 않음)
@@ -233,8 +240,9 @@ echo ""
 echo -e "  ${BOLD}APM 대시보드${NC}"
 echo "  http://${SERVER_IP}:${APM_PORT}"
 echo ""
-echo -e "  ${BOLD}JEUS WAS 에이전트 JVM 옵션 (hamster-agent.jar 단일 파일 사용)${NC}"
-echo "  -javaagent:${AGENT_DIR}/hamster-agent.jar"
+echo -e "  ${BOLD}JEUS WAS 에이전트 JVM 옵션${NC}"
+echo "  -javaagent:${AGENT_DIR}/opentelemetry-javaagent.jar"
+echo "  -Dotel.javaagent.extensions=${AGENT_DIR}/hamster-extension.jar"
 echo "  -Dotel.exporter.otlp.endpoint=http://${SERVER_IP}:${APM_PORT}/otlp"
 echo "  -Dotel.exporter.otlp.protocol=http/protobuf"
 echo "  -Dotel.service.name=<서비스명>"
